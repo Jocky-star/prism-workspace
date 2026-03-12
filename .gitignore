@@ -5,6 +5,17 @@ data/
 camera/
 logs/
 *.jsonl
+MEMORY.md
+USER.md
+
+# === 运营文件（个人配置，不推）===
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+BOOTSTRAP.md
+current_position.md
 
 # === 配置 & 密钥 ===
 .openclaw/
@@ -13,6 +24,19 @@ models.json
 *.key
 *.pem
 *.env
+
+# === 非项目目录 ===
+.git.bak/
+.agents/
+skills/
+skill-packages/
+claw-skills/
+xhs_daily/
+xhs_drafts/
+reports/
+tasks/
+plans/
+skills-lock.json
 
 # === 运行时 ===
 __pycache__/
@@ -29,19 +53,11 @@ node_modules/
 *.gif
 *.wav
 *.mp3
+*.json
+
+# === 允许的 json ===
+!package.json
 
 # === OS ===
 .DS_Store
 Thumbs.db
-
-# === 项目排除 ===
-.git.bak/
-.agents/
-skills/
-skill-packages/
-claw-skills/
-xhs_daily/
-reports/
-tasks/
-test_*.jpg
-*.skill
