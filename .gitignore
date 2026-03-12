@@ -65,3 +65,8 @@ Thumbs.db
 # === Skill 打包文件 ===
 *.skill
 dist/
+
+# === 根目录杂项 ===
+content-*.py
+content-*.md
+xhs-*.py
