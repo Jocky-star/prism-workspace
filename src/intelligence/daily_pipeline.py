@@ -24,7 +24,7 @@ from pathlib import Path
 
 TZ = timezone(timedelta(hours=8))
 WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace"))
-SCRIPTS = WORKSPACE / "scripts"
+SRC = WORKSPACE / "src"
 INTEL_DIR = WORKSPACE / "memory" / "intelligence"
 DATA_DIR = WORKSPACE / "data" / "daily-reports"
 STATE_FILE = INTEL_DIR / "pipeline_state.json"
@@ -48,9 +48,10 @@ def atomic_write_json(path, data):
     tmp.replace(path)
 
 
-def run_script(script: str, args: list, timeout: int = 120) -> tuple[bool, str]:
-    """Run a Python script, return (success, output)."""
-    cmd = [sys.executable, str(SCRIPTS / script)] + args
+def run_script(script_path: str, args: list, timeout: int = 120) -> tuple[bool, str]:
+    """Run a Python script by relative path from src/, return (success, output)."""
+    full_path = SRC / script_path
+    cmd = [sys.executable, str(full_path)] + args
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=str(WORKSPACE))
         output = result.stdout + result.stderr
@@ -219,10 +220,20 @@ def main():
 
     print(f"🔄 每日管线：处理 {len(dates)} 天 ({', '.join(dates)})")
 
-    # Step 1: Perception
+    # Step 0: Chat data extraction
+    print("\n💬 对话数据采集...")
+    ok, output = run_script("sources/chat/extract.py", ["--recent", "2", "--feed-perception"])
+    if ok:
+        for line in output.splitlines():
+            if "Extracted" in line or "提取" in line:
+                print(f"  ✅ {line.strip()}")
+    else:
+        print(f"  ⚠️ 对话采集: {output[:100]}")
+
+    # Step 1: Perception (audio data)
     print("\n📡 感知层...")
     for date_str in dates:
-        ok, output = run_script("pi_perception.py", [date_str, "--no-llm"])
+        ok, output = run_script("intelligence/perception.py", [date_str, "--no-llm"])
         if ok:
             print(f"  ✅ {date_str}")
         else:
@@ -231,7 +242,7 @@ def main():
 
     # Step 2: Understanding
     print("\n🧠 理解层...")
-    ok, output = run_script("pi_understand.py", [])
+    ok, output = run_script("intelligence/understand.py", [])
     if ok:
         print("  ✅ 统计更新")
     else:
@@ -247,9 +258,8 @@ def main():
             print(f"  💡 {date_str}: {n} 条洞察（内置检测）")
 
     # Step 4: Advanced insight generator
-    ok, output = run_script("pi_generate_insights.py", ["--date", dates[-1]])
+    ok, output = run_script("intelligence/generate_insights.py", ["--date", dates[-1]])
     if ok:
-        # Count new insights from output
         for line in output.splitlines():
             if "条" in line and ("提醒" in line or "偏离" in line or "变化" in line):
                 print(f"  {line.strip()}")
@@ -258,7 +268,7 @@ def main():
 
     # Step 5: Action layer
     print("\n🎬 行动执行...")
-    ok, output = run_script("pi_action.py", [])
+    ok, output = run_script("intelligence/action.py", [])
     if ok:
         for line in output.splitlines():
             if line.strip().startswith("✅") or line.strip().startswith("⏭️"):
