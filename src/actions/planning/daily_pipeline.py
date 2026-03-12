@@ -258,7 +258,7 @@ def main():
             print(f"  💡 {date_str}: {n} 条洞察（内置检测）")
 
     # Step 4: Advanced insight generator
-    ok, output = run_script("intelligence/generate_insights.py", ["--date", dates[-1]])
+    ok, output = run_script("actions/planning/generate_insights.py", ["--date", dates[-1]])
     if ok:
         for line in output.splitlines():
             if "条" in line and ("提醒" in line or "偏离" in line or "变化" in line):
@@ -268,7 +268,7 @@ def main():
 
     # Step 5: Action layer
     print("\n🎬 行动执行...")
-    ok, output = run_script("intelligence/action.py", [])
+    ok, output = run_script("actions/planning/action.py", [])
     if ok:
         for line in output.splitlines():
             if line.strip().startswith("✅") or line.strip().startswith("⏭️"):

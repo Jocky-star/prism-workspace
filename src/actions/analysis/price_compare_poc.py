@@ -271,7 +271,7 @@ def main():
             "ali1688": ali_items[:20],
             "pdd": pdd_items[:20]
         }
-        outfile = f"/home/mi/.openclaw/workspace/src/analysis/price_data_{keyword.replace(' ','_')}.json"
+        outfile = f"/home/mi/.openclaw/workspace/src/actions/analysis/price_data_{keyword.replace(' ','_')}.json"
         with open(outfile, "w", encoding="utf-8") as f:
             json.dump(output, f, ensure_ascii=False, indent=2)
         print(f"\n📁 原始数据已保存: {outfile}")

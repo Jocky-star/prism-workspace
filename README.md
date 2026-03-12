@@ -92,19 +92,31 @@ src/
 │   │   └── news_monitor.py         #      异动监控
 │   └── README.md                   #    如何接入新数据源
 │
-├── intelligence/                   # 🧠 智能理解系统
+├── intelligence/                   # 🧠 智能理解（纯理解，不执行）
 │   ├── perception.py               #    感知：提取实体/事件/意图/情境
 │   ├── understand.py               #    理解：画像/关系/模式
 │   ├── refine.py                   #    精炼：LLM 每日分析
 │   ├── weekly_refine.py            #    精炼：每周深度回顾
-│   ├── daily_pipeline.py           #    管线：每日 感知→理解→精炼
-│   ├── action.py                   #    行动：自主规划与执行
-│   ├── generate_insights.py        #    洞察：生成推送内容（含质量门控）
-│   ├── insight_daemon.py           #    推送 daemon
-│   ├── bootstrap.py                #    冷启动：批量处理历史数据
-│   └── check_notifications.py      #    通知队列检查
+│   └── bootstrap.py                #    冷启动：批量处理历史数据
 │
-├── screen/                         # 📺 Prism 屏幕
+├── actions/                        # 🎬 执行规划层（理解之后的所有动作）
+│   ├── planning/                   #    核心规划
+│   │   ├── daily_pipeline.py       #      每日管线：采集→感知→理解→行动
+│   │   ├── action.py               #      自主行动规划与执行
+│   │   ├── generate_insights.py    #      洞察生成（含质量门控）
+│   │   ├── insight_daemon.py       #      推送 daemon（Prism/飞书）
+│   │   └── check_notifications.py  #      通知队列检查
+│   ├── monitoring/                 #    监控类行动
+│   │   ├── ai_news_radar.py        #      AI 新闻雷达
+│   │   ├── forex_monitor.py        #      外汇监控
+│   │   └── ...                     #      股票信号、小红书等
+│   ├── analysis/                   #    分析类行动
+│   │   ├── api_usage_report.py     #      API 用量统计
+│   │   └── ...                     #      日报分析等
+│   └── integrations/               #    外部服务
+│       └── mijia_lamp.py           #      米家台灯控制
+│
+├── screen/                         # 📺 Prism 屏幕（独立模块）
 │   ├── daemon.py                   #    主 daemon：刷新+存在检测+联动
 │   ├── display.py                  #    渲染：fb0 直写 + 2x 超采样
 │   ├── update.py                   #    CLI：更新屏幕状态
@@ -120,18 +132,6 @@ src/
 │   ├── daily_digest.py             #    录音每日摘要
 │   ├── idea_capture.py             #    灵感捕捉
 │   └── weekly_review.py            #    每周行为回顾
-│
-├── integrations/                   # 🔗 外部服务
-│   └── mijia_lamp.py               #    米家台灯控制
-│
-├── monitoring/                     # 📡 监控
-│   ├── ai_news_radar.py            #    AI 新闻雷达
-│   ├── forex_monitor.py            #    外汇监控
-│   └── ...                         #    更多监控脚本
-│
-├── analysis/                       # 📈 分析报告
-│   ├── api_usage_report.py         #    API 用量统计
-│   └── ...                         #    更多分析脚本
 │
 └── infra/                          # ⚙️ 基础设施
     ├── gateway_watchdog.sh          #    网关看门狗
@@ -177,7 +177,7 @@ python3 src/intelligence/bootstrap.py
 python3 src/screen/daemon.py --daemon
 
 # 6. 启动洞察推送 daemon
-python3 src/intelligence/insight_daemon.py --daemon
+python3 src/actions/planning/insight_daemon.py --daemon
 
 # 7. 设置定时任务
 # 每日管线（23:40）

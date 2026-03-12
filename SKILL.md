@@ -40,9 +40,9 @@ python3 src/screen/update.py --show
 
 ```bash
 # 每日全量管线（感知→理解→精炼），通常由 cron 在 23:40 自动跑
-python3 src/intelligence/daily_pipeline.py
-python3 src/intelligence/daily_pipeline.py --date 20260312    # 指定日期
-python3 src/intelligence/daily_pipeline.py --force             # 强制重跑
+python3 src/actions/planning/daily_pipeline.py
+python3 src/actions/planning/daily_pipeline.py --date 20260312    # 指定日期
+python3 src/actions/planning/daily_pipeline.py --force             # 强制重跑
 
 # 单独运行各层
 python3 src/intelligence/perception.py              # 感知：提取实体/事件/意图/情境
@@ -59,32 +59,32 @@ python3 src/intelligence/bootstrap.py
 
 ```bash
 # 检查并执行待处理行动（cron 每小时 9-22 点）
-python3 src/intelligence/action.py
+python3 src/actions/planning/action.py
 
 # 只看行动计划，不执行
-python3 src/intelligence/action.py --plan
+python3 src/actions/planning/action.py --plan
 
 # 执行指定行动
-python3 src/intelligence/action.py --execute <action_id>
+python3 src/actions/planning/action.py --execute <action_id>
 
 # 查看历史统计
-python3 src/intelligence/action.py --stats
+python3 src/actions/planning/action.py --stats
 
 # 记录用户反馈（正面/负面）
-python3 src/intelligence/action.py --feedback <action_id> positive
-python3 src/intelligence/action.py --feedback <action_id> negative
+python3 src/actions/planning/action.py --feedback <action_id> positive
+python3 src/actions/planning/action.py --feedback <action_id> negative
 ```
 
 ### 洞察生成
 
 ```bash
 # 生成今日洞察（由管线自动调用）
-python3 src/intelligence/generate_insights.py
+python3 src/actions/planning/generate_insights.py
 
 # 只检查特定类型
-python3 src/intelligence/generate_insights.py --check-intents
-python3 src/intelligence/generate_insights.py --check-patterns
-python3 src/intelligence/generate_insights.py --check-relationships
+python3 src/actions/planning/generate_insights.py --check-intents
+python3 src/actions/planning/generate_insights.py --check-patterns
+python3 src/actions/planning/generate_insights.py --check-relationships
 ```
 
 ### 数据采集（src/sources/）

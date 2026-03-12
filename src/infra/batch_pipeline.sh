@@ -19,7 +19,7 @@ ERRORS=""
 
 for DATE in "${DATES[@]}"; do
   echo "=== Processing $DATE ==="
-  OUTPUT=$(python3 src/intelligence/daily_pipeline.py --date "$DATE" --force 2>&1)
+  OUTPUT=$(python3 src/actions/planning/daily_pipeline.py --date "$DATE" --force 2>&1)
   EXIT_CODE=$?
   echo "$OUTPUT"
   if [ $EXIT_CODE -eq 0 ]; then
