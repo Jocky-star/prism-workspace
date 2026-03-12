@@ -33,3 +33,15 @@ node_modules/
 # === OS ===
 .DS_Store
 Thumbs.db
+
+# === 项目排除 ===
+.git.bak/
+.agents/
+skills/
+skill-packages/
+claw-skills/
+xhs_daily/
+reports/
+tasks/
+test_*.jpg
+*.skill

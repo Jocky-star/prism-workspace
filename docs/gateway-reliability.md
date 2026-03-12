@@ -76,7 +76,7 @@ WantedBy=default.target
 
 ```bash
 #!/bin/bash
-# /home/mi/.openclaw/workspace/scripts/gateway_watchdog.sh
+# /home/mi/.openclaw/workspace/src/infra/gateway_watchdog.sh
 # cron: */2 * * * * （每2分钟跑一次）
 
 LOG="/home/mi/.openclaw/workspace/logs/watchdog.log"
@@ -127,7 +127,7 @@ fi
 # 用系统 crontab
 crontab -e
 # 添加：
-*/2 * * * * /home/mi/.openclaw/workspace/scripts/gateway_watchdog.sh
+*/2 * * * * /home/mi/.openclaw/workspace/src/infra/gateway_watchdog.sh
 ```
 
 ### 第五步：开机启动验证链

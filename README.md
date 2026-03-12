@@ -146,13 +146,13 @@ pip install pillow requests
 # 3. 配置 LLM API（在 OpenClaw 的 models.json 中配置）
 
 # 4. 冷启动（首次运行，处理历史录音数据）
-python3 scripts/pi_bootstrap.py
+python3 src/intelligence/bootstrap.py
 
 # 5. 启动屏幕 daemon
-python3 scripts/prism_daemon.py --daemon
+python3 src/screen/daemon.py --daemon
 
 # 6. 启动洞察推送 daemon
-python3 scripts/pi_insight_daemon.py --daemon
+python3 src/intelligence/insight_daemon.py --daemon
 
 # 7. 设置定时任务
 # 每日管线（23:40）
@@ -169,7 +169,7 @@ Description=Prism Display Daemon
 After=default.target
 
 [Service]
-ExecStart=/usr/bin/python3 /path/to/scripts/prism_daemon.py
+ExecStart=/usr/bin/python3 /path/to/src/screen/daemon.py
 Restart=always
 RestartSec=10
 
@@ -245,7 +245,7 @@ SKILL.md 中的每个命令都可以封装为 tool call：
   "parameters": {
     "task": { "type": "string", "description": "当前任务描述，12字以内" }
   },
-  "command": "python3 scripts/prism_update.py --task '{task}'"
+  "command": "python3 src/screen/update.py --task '{task}'"
 }
 ```
 

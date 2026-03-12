@@ -81,7 +81,7 @@
 ```
 
 ### 技术实现
-- 脚本：`scripts/daily_digest.py`
+- 脚本：`src/data/daily_digest.py`
 - LLM：`pa/claude-haiku-4-5-20251001`（省 token，分析单天数据约 1k-3k tokens）
 - 失败处理：API 失败重试 3 次（指数退避），最终降级为纯规则输出（不调 LLM）
 
@@ -111,7 +111,7 @@
 - 控制在 2 句话以内
 
 ### 技术实现
-- 脚本：`scripts/weekly_review.py`
+- 脚本：`src/data/weekly_review.py`
 - 输出到 stdout，由 cron 通过 `openclaw send` 发给饭团
 - 同时存档到 `memory/weekly-reviews/YYYY-WXX.md`
 
@@ -246,16 +246,16 @@
 # ===================== 饭团生活数据闭环 =====================
 
 # A. 每日录音分析（daily-report 拉完后 5 分钟）
-5 23 * * * cd /home/mi/.openclaw/workspace && python3 scripts/daily_digest.py >> logs/daily_digest.log 2>&1
+5 23 * * * cd /home/mi/.openclaw/workspace && python3 src/data/daily_digest.py >> logs/daily_digest.log 2>&1
 
 # B. 每周行为回顾（周日 20:00）
-0 20 * * 0 cd /home/mi/.openclaw/workspace && python3 scripts/weekly_review.py | openclaw send --channel feishu >> logs/weekly_review.log 2>&1
+0 20 * * 0 cd /home/mi/.openclaw/workspace && python3 src/data/weekly_review.py | openclaw send --channel feishu >> logs/weekly_review.log 2>&1
 
 # C. 习惯建议引擎（周一 09:00）
 0 9 * * 1 cd /home/mi/.openclaw/workspace && python3 scripts/habit_advisor.py | openclaw send --channel feishu >> logs/habit_advisor.log 2>&1
 
 # D. 想法捕捉（每天 23:10，daily-report 处理完后）
-10 23 * * * cd /home/mi/.openclaw/workspace && python3 scripts/idea_capture.py >> logs/idea_capture.log 2>&1
+10 23 * * * cd /home/mi/.openclaw/workspace && python3 src/data/idea_capture.py >> logs/idea_capture.log 2>&1
 
 # E. 建议追踪检查（周一 08:50，建议生成前检查上周）
 50 8 * * 1 cd /home/mi/.openclaw/workspace && python3 scripts/suggestion_feedback.py >> logs/suggestion_feedback.log 2>&1
@@ -287,9 +287,9 @@
 
 | 脚本 | 触发 | 输入 | 输出 |
 |------|------|------|------|
-| `scripts/daily_digest.py` | cron 23:05 | daily-report JSON | memory/daily-digest/ |
-| `scripts/weekly_review.py` | cron 周日20:00 | daily-digest x7 | stdout（消息文本） |
-| `scripts/idea_capture.py` | cron 23:10 | daily-report JSON | memory/idea-capture.md |
+| `src/data/daily_digest.py` | cron 23:05 | daily-report JSON | memory/daily-digest/ |
+| `src/data/weekly_review.py` | cron 周日20:00 | daily-digest x7 | stdout（消息文本） |
+| `src/data/idea_capture.py` | cron 23:10 | daily-report JSON | memory/idea-capture.md |
 | `scripts/habit_advisor.py` | cron 周一09:00 | daily-digest x14 + habits | stdout（建议文本） |
 | `scripts/suggestion_feedback.py` | cron 周一08:50 | suggestion-tracker + habits | suggestion-tracker.json（更新） |
 

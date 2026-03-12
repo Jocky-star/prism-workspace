@@ -16,85 +16,85 @@
 
 ```bash
 # 更新当前任务（旧任务自动转为"已完成"）
-python3 scripts/prism_update.py --task "正在做的事"
+python3 src/screen/update.py --task "正在做的事"
 
 # 标记完成
-python3 scripts/prism_update.py --done "做完的事"
+python3 src/screen/update.py --done "做完的事"
 
 # 添加提醒（最多3条，多了自动挤掉最旧的）
-python3 scripts/prism_update.py --note "要提醒用户的话"
+python3 src/screen/update.py --note "要提醒用户的话"
 
 # 清除提醒（会自动换一句随机诗词）
-python3 scripts/prism_update.py --clear-notes
+python3 src/screen/update.py --clear-notes
 
 # 触发事件闪屏（alert=红/info=蓝/done=绿，屏幕闪3次）
-python3 scripts/prism_update.py --event "alert:紧急消息"
-python3 scripts/prism_update.py --event "info:普通通知"
-python3 scripts/prism_update.py --event "done:任务完成"
+python3 src/screen/update.py --event "alert:紧急消息"
+python3 src/screen/update.py --event "info:普通通知"
+python3 src/screen/update.py --event "done:任务完成"
 
 # 查看当前屏幕状态
-python3 scripts/prism_update.py --show
+python3 src/screen/update.py --show
 ```
 
 ### 智能理解管线
 
 ```bash
 # 每日全量管线（感知→理解→精炼），通常由 cron 在 23:40 自动跑
-python3 scripts/pi_daily_pipeline.py
-python3 scripts/pi_daily_pipeline.py --date 20260312    # 指定日期
-python3 scripts/pi_daily_pipeline.py --force             # 强制重跑
+python3 src/intelligence/daily_pipeline.py
+python3 src/intelligence/daily_pipeline.py --date 20260312    # 指定日期
+python3 src/intelligence/daily_pipeline.py --force             # 强制重跑
 
 # 单独运行各层
-python3 scripts/pi_perception.py              # 感知：提取实体/事件/意图/情境
-python3 scripts/pi_perception.py --stats      # 查看感知统计
-python3 scripts/pi_understand.py              # 理解：生成画像/关系/模式
-python3 scripts/pi_refine.py                  # 精炼：LLM 每日分析
-python3 scripts/pi_weekly_refine.py           # 每周深度回顾（cron 周日 21:00）
+python3 src/intelligence/perception.py              # 感知：提取实体/事件/意图/情境
+python3 src/intelligence/perception.py --stats      # 查看感知统计
+python3 src/intelligence/understand.py              # 理解：生成画像/关系/模式
+python3 src/intelligence/refine.py                  # 精炼：LLM 每日分析
+python3 src/intelligence/weekly_refine.py           # 每周深度回顾（cron 周日 21:00）
 
 # 冷启动（首次部署，批量处理历史数据）
-python3 scripts/pi_bootstrap.py
+python3 src/intelligence/bootstrap.py
 ```
 
 ### 行动系统
 
 ```bash
 # 检查并执行待处理行动（cron 每小时 9-22 点）
-python3 scripts/pi_action.py
+python3 src/intelligence/action.py
 
 # 只看行动计划，不执行
-python3 scripts/pi_action.py --plan
+python3 src/intelligence/action.py --plan
 
 # 执行指定行动
-python3 scripts/pi_action.py --execute <action_id>
+python3 src/intelligence/action.py --execute <action_id>
 
 # 查看历史统计
-python3 scripts/pi_action.py --stats
+python3 src/intelligence/action.py --stats
 
 # 记录用户反馈（正面/负面）
-python3 scripts/pi_action.py --feedback <action_id> positive
-python3 scripts/pi_action.py --feedback <action_id> negative
+python3 src/intelligence/action.py --feedback <action_id> positive
+python3 src/intelligence/action.py --feedback <action_id> negative
 ```
 
 ### 洞察生成
 
 ```bash
 # 生成今日洞察（由管线自动调用）
-python3 scripts/pi_generate_insights.py
+python3 src/intelligence/generate_insights.py
 
 # 只检查特定类型
-python3 scripts/pi_generate_insights.py --check-intents
-python3 scripts/pi_generate_insights.py --check-patterns
-python3 scripts/pi_generate_insights.py --check-relationships
+python3 src/intelligence/generate_insights.py --check-intents
+python3 src/intelligence/generate_insights.py --check-patterns
+python3 src/intelligence/generate_insights.py --check-relationships
 ```
 
 ### 摄像头 & 健康
 
 ```bash
 # 拍照 + AI 识别（用户身份判定）
-python3 scripts/camera_check.py
+python3 src/camera/check.py
 
 # 健康关怀检测（姿态/疲劳/水杯）
-python3 scripts/wellness_check.py
+python3 src/camera/wellness.py
 ```
 
 ### 米家台灯
