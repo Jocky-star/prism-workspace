@@ -520,7 +520,7 @@ def _get_intelligent_content_safe():
         _scripts_dir = str(Path(_os.path.expanduser("~/.openclaw/workspace/scripts")))
         if _scripts_dir not in _sys.path:
             _sys.path.insert(0, _scripts_dir)
-        from prism_intelligence import get_intelligent_content
+        from intelligence import get_intelligent_content
         return get_intelligent_content()
     except Exception:
         return None

@@ -15,8 +15,8 @@ _dir = os.path.dirname(os.path.abspath(__file__))
 if _dir not in sys.path:
     sys.path.insert(0, _dir)
 
-from prism_display import render_frame, render_dim_frame, write_to_framebuffer
-from prism_transition import fade_transition, fade_to_black, fade_from_black
+from display import render_frame, render_dim_frame, write_to_framebuffer
+from transition import fade_transition, fade_to_black, fade_from_black
 
 print("═" * 50)
 print("  Prism 渐变过渡测试")

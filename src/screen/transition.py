@@ -38,7 +38,7 @@ def fade_transition(old_img: Image.Image, new_img: Image.Image,
         steps:    过渡帧数（默认 8 帧）
         duration: 总过渡时长（秒，默认 0.5s）
     """
-    from prism_display import write_to_framebuffer
+    from display import write_to_framebuffer
 
     # 保证两帧尺寸一致（保险措施）
     if old_img.size != new_img.size:

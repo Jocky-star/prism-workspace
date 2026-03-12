@@ -69,7 +69,7 @@ def flush_to_screen():
     """立即推一帧到屏幕"""
     try:
         import importlib.util
-        display_path = Path(__file__).parent / "prism_display.py"
+        display_path = Path(__file__).parent / "display.py"
         spec = importlib.util.spec_from_file_location("prism_display", display_path)
         display = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(display)

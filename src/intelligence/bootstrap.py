@@ -23,8 +23,8 @@ SCRIPTS = BASE / "scripts"
 INTELLIGENCE = BASE / "memory" / "intelligence"
 LOGS = BASE / "logs"
 
-PERCEPTION_SCRIPT = SCRIPTS / "pi_perception.py"
-UNDERSTAND_SCRIPT = SCRIPTS / "pi_understand.py"
+PERCEPTION_SCRIPT = SRC / "intelligence" / "perception.py"
+UNDERSTAND_SCRIPT = SRC / "intelligence" / "understand.py"
 
 # intelligence 目录下的关键文件
 KEY_FILES = [

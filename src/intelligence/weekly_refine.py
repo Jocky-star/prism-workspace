@@ -24,7 +24,7 @@ from pathlib import Path
 
 TZ = timezone(timedelta(hours=8))
 WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace"))
-SCRIPTS = WORKSPACE / "scripts"
+SRC = WORKSPACE / "src"
 INTEL_DIR = WORKSPACE / "memory" / "intelligence"
 MODELS_JSON = Path(os.path.expanduser("~/.openclaw/agents/main/agent/models.json"))
 
@@ -96,7 +96,7 @@ def call_llm(prompt, api, max_tokens=3000):
 
 def run_refine():
     """Run pi_refine.py for full LLM refinement."""
-    cmd = [sys.executable, str(SCRIPTS / "pi_refine.py")]
+    cmd = [sys.executable, str(SRC / "intelligence" / "refine.py")]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=str(WORKSPACE))
         print(result.stdout)
