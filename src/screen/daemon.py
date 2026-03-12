@@ -26,7 +26,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 # Camera lock to prevent contention with cron scripts
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "camera"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sources" / "camera"))
 from lock import camera_lock
 import logging
 

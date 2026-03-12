@@ -87,14 +87,28 @@ python3 src/intelligence/generate_insights.py --check-patterns
 python3 src/intelligence/generate_insights.py --check-relationships
 ```
 
-### 摄像头 & 健康
+### 数据采集（src/sources/）
+
+所有外部数据源统一在 `src/sources/` 下，每种数据一个子目录。接入新数据源只需加子目录。
 
 ```bash
-# 拍照 + AI 识别（用户身份判定）
-python3 src/camera/check.py
+# 摄像头：拍照 + AI 识别（用户身份判定）
+python3 src/sources/camera/capture.py
 
-# 健康关怀检测（姿态/疲劳/水杯）
-python3 src/camera/wellness.py
+# 摄像头：健康关怀检测（姿态/疲劳/水杯）
+python3 src/sources/camera/wellness.py
+
+# 摄像头：延时摄影（每小时一张 + 每晚拼视频）
+python3 src/sources/camera/timelapse.py
+
+# 录音数据：拉取最新录音转写
+python3 src/sources/audio/fetch.py
+
+# 股票消息面：抓取财经新闻
+python3 src/sources/stock/news_fetcher.py
+
+# 股票监控：异动检测
+python3 src/sources/stock/news_monitor.py
 ```
 
 ### 米家台灯
