@@ -186,6 +186,20 @@ systemctl --user start prism-display.service
 
 本项目包含一份 [`SKILL.md`](./SKILL.md)，是面向 AI Agent 的操作手册。如果你使用 [OpenClaw](https://github.com/openclaw/openclaw) 或其他 Agent 框架，可以直接将 SKILL.md 注入到 Agent 的上下文中，Agent 就能自主操作整个系统。
 
+### 最简单的方式：一段话搞定
+
+把下面这段话直接发给你的 Agent（ChatGPT / Claude / OpenClaw / 任何能执行命令的 Agent），它就能接管 Prism：
+
+> 我在树莓派上部署了 Prism 智能桌面终端，代码在 `~/.openclaw/workspace/`。请先读 `~/.openclaw/workspace/SKILL.md`，里面有完整的命令手册。读完后你就知道怎么操作了——包括更新屏幕、运行智能管线、查看用户画像、管理推送。所有命令都是 `python3 scripts/xxx.py`，直接执行就行。
+
+如果 Agent 没有直接访问文件系统的能力，把 SKILL.md 的内容贴给它也行：
+
+> 你现在负责操作一个叫 Prism 的树莓派桌面智能终端。以下是操作手册：
+>
+> [粘贴 SKILL.md 全文]
+>
+> 请根据这份手册来操作系统。
+
 ### 方式一：OpenClaw Skill（推荐）
 
 将本项目作为 OpenClaw skill 安装：
