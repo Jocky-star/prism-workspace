@@ -182,6 +182,70 @@ systemctl --user enable prism-display.service
 systemctl --user start prism-display.service
 ```
 
+## 给 AI Agent 使用
+
+本项目包含一份 [`SKILL.md`](./SKILL.md)，是面向 AI Agent 的操作手册。如果你使用 [OpenClaw](https://github.com/openclaw/openclaw) 或其他 Agent 框架，可以直接将 SKILL.md 注入到 Agent 的上下文中，Agent 就能自主操作整个系统。
+
+### 方式一：OpenClaw Skill（推荐）
+
+将本项目作为 OpenClaw skill 安装：
+
+```bash
+# 在 OpenClaw workspace 的 skills/ 目录下 clone
+cd ~/.openclaw/workspace/skills/
+git clone git@github.com:Jocky-star/prism-workspace.git prism
+
+# OpenClaw 会自动扫描 skills/ 下的 SKILL.md，Agent 在需要时自动加载
+```
+
+或者在 `AGENTS.md` 中手动注册：
+
+```markdown
+## Available Skills
+- prism: ~/.openclaw/workspace/skills/prism/SKILL.md
+```
+
+### 方式二：直接喂给任意 Agent
+
+把 SKILL.md 内容作为 system prompt 或上下文注入：
+
+```python
+# 读取 SKILL.md 作为 Agent 的参考
+with open("SKILL.md") as f:
+    skill_context = f.read()
+
+messages = [
+    {"role": "system", "content": f"你可以使用以下工具操作 Prism 系统：\n\n{skill_context}"},
+    {"role": "user", "content": "更新屏幕显示'正在开会'"}
+]
+```
+
+### 方式三：作为 MCP / Tool Description
+
+SKILL.md 中的每个命令都可以封装为 tool call：
+
+```json
+{
+  "name": "prism_update_task",
+  "description": "更新 Prism 屏幕当前任务",
+  "parameters": {
+    "task": { "type": "string", "description": "当前任务描述，12字以内" }
+  },
+  "command": "python3 scripts/prism_update.py --task '{task}'"
+}
+```
+
+### Agent 能做什么
+
+拿到 SKILL.md 后，Agent 可以：
+
+- 🖥️ 控制屏幕显示（任务/完成/提醒/闪屏）
+- 🧠 运行智能理解管线（感知→理解→精炼→行动）
+- 📊 查询用户画像、行为模式、社交关系
+- 💡 管理推送（遵守质量门控规则）
+- 🔧 检查和重启后台服务
+- 📷 调用摄像头拍照识别
+
 ## 设计理念
 
 1. **个性化是相处，不是配置** — 没有设置页面，Agent 通过持续观察和理解来适应你
