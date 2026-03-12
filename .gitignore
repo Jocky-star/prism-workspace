@@ -61,3 +61,7 @@ node_modules/
 # === OS ===
 .DS_Store
 Thumbs.db
+
+# === Skill 打包文件 ===
+*.skill
+dist/
