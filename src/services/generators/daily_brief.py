@@ -36,6 +36,12 @@ sys.path.insert(0, str(WORKSPACE))
 from src.services.data_sources import DataSourceRegistry
 from src.services.llm_client import llm_complete
 
+try:
+    from src.services.feedback_tracker import log_suggestion
+    _FEEDBACK_TRACKER_AVAILABLE = True
+except ImportError:
+    _FEEDBACK_TRACKER_AVAILABLE = False
+
 OUTPUT_DIR = SERVICES_OUTPUT_DIR
 
 
@@ -267,7 +273,51 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
     return result
 
 
-def format_brief_message(brief: Dict[str, Any]) -> str:
+def _format_proactive_entry(p: Dict[str, Any]) -> tuple[str, Optional[str]]:
+    """格式化一条 proactive 建议，返回 (文本, suggestion_id)。
+
+    格式示例：
+      💡 你提了三次想去福州 → 帮你查了直飞航班，最便宜 ¥420。要帮你锁航班吗？还是再等等？
+    """
+    insight = p.get("insight", "")
+    action = p.get("action", "")
+    result = p.get("result", "")
+    options: List[str] = p.get("options", [])
+    category: str = p.get("category", "general")
+
+    # 拼接正文
+    parts = []
+    if insight and action:
+        parts.append(f"{insight} → {action}")
+    elif insight:
+        parts.append(insight)
+    elif action:
+        parts.append(action)
+    if result:
+        parts.append(result)
+    body = "。".join(parts) if parts else ""
+
+    # 拼接自然语言选项
+    if options:
+        opts_text = "，还是".join(options)
+        full_text = f"💡 {body}。{opts_text}？"
+    else:
+        full_text = f"💡 {body}"
+
+    # 记录到 feedback_tracker
+    suggestion_id: Optional[str] = None
+    if _FEEDBACK_TRACKER_AVAILABLE and body:
+        try:
+            suggestion_id = log_suggestion(
+                category=category,
+                content=full_text,
+                options=options,
+            )
+            full_text = f"{full_text}\n  _(id: {suggestion_id[:8]}...)_"
+        except Exception:
+            pass
+
+    return full_text, suggestion_id
     """Format brief into a natural, human-friendly message.
     
     不要暴露技术细节（日期、数据源、pipeline），像秘书一样汇报：
@@ -295,10 +345,8 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
     if proactive:
         parts.append("**注意到你最近的状态，我主动做了这些**\n")
         for p in proactive:
-            parts.append(f"💡 {p.get('insight', '')}")
-            parts.append(f"  → {p.get('action', '')}")
-            if p.get("result"):
-                parts.append(f"  📎 {p['result']}")
+            entry_text, _sid = _format_proactive_entry(p)
+            parts.append(entry_text)
             parts.append("")
 
     # Captured intents — 你提到的我记住了
