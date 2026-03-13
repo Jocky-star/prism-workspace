@@ -135,7 +135,16 @@ python3 src/services/pipeline.py --dry-run
 python3 src/services/pipeline.py --date 2026-03-12
 ```
 
-### 5. 看看生成了什么
+### 5. 设置定时任务
+
+```bash
+# 一键安装所有定时任务（晨间Brief 8:30 / 每日管线 23:40 / 每周洞察 周日21:00）
+bash setup_crons.sh
+```
+
+安装后每天 8:30 会自动收到晨间 Brief，无需手动操作。
+
+### 6. 看看生成了什么
 
 ```bash
 # 晨间 Brief

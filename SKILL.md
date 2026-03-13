@@ -33,6 +33,18 @@ export LLM_API_KEY=your-api-key
 # 方式二：自动读取 ~/.openclaw/agents/main/agent/models.json 中的 litellm provider
 ```
 
+## 初始化定时任务
+
+```bash
+# 一键安装所有 cron（晨间Brief / 每日管线 / 每周洞察）
+bash setup_crons.sh
+```
+
+安装后自动生效：
+- **每天 8:30** — 晨间 Brief 推送给用户
+- **每天 23:40** — 跑 daily pipeline（会议/意图/情绪）
+- **每周日 21:00** — 人际洞察推送
+
 ## 核心命令
 
 ### 服务系统
