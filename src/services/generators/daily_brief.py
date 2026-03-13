@@ -191,6 +191,7 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
 - **proactive**: ⭐最重要的板块！根据用户最近的兴趣/状态/习惯，你主动洞察到了什么，然后主动做了什么。
   例如：注意到用户最近聊了旅行 → 帮他查了机票和攻略；注意到运动频率下降 → 查了附近健身课；注意到在研究某个话题 → 整理了相关资料。
   这个板块体现"我懂你"，不是被动执行命令，而是主动替你想。
+  ⚠️ 每条 proactive 要精简！insight 一句话（20字以内），action 一句话（30字以内），不要写长段分析。最多 3-4 条。
 - **captured_intents**: 用户明确提到/要求的事，quote 控制在 30 字以内
 - **prepared_for_today**: 可以直接拿来用的东西
 - **tracking**: 长线跟踪项
