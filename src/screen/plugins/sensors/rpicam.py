@@ -112,15 +112,21 @@ class Plugin(SensorPlugin):
             # 调用 rpicam-still
             env = dict(os.environ, LIBCAMERA_LOG_LEVELS="*:ERROR")
             camera_lock = self._get_camera_lock()
+            # autofocus 配置
+            autofocus = self.config.get("autofocus", True)
+            af_timeout = int(self.config.get("autofocus_timeout", 3000))  # 对焦需要时间
+
             cmd = [
                 "rpicam-still",
                 "-o", tmp_path,
                 "--width", str(width),
                 "--height", str(height),
-                "--timeout", str(timeout_ms),
+                "--timeout", str(af_timeout if autofocus else timeout_ms),
                 "--nopreview",
                 "--rotation", str(rotation),
             ]
+            if autofocus:
+                cmd += ["--autofocus-mode", "auto", "--autofocus-on-capture"]
 
             with camera_lock(timeout=10):
                 result = subprocess.run(

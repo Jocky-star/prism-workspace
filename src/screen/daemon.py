@@ -245,12 +245,8 @@ def main_loop():
     except Exception as e:
         log.warning(f"启动同步设备状态失败: {e}")
 
-    # 2. 初始化所有设备插件（spi_screen 会在 on_init 时启动自己的线程）
-    for d in devices:
-        try:
-            d.on_init()
-        except Exception as e:
-            log.warning(f"设备插件 {d.__class__.__name__} 初始化失败: {e}")
+    # 2. 设备插件已在 load_devices() 时自动调用 on_init()
+    #    spi_screen 的 on_init 会启动显示线程
 
     # 3. 主循环变量
     last_camera_time = 0.0
