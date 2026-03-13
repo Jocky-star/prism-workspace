@@ -62,6 +62,7 @@ VISION_API_TIMEOUT = 15      # API 超时秒数
 
 # ── 日志 ─────────────────────────────────────────────────────────────────────
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+logging.root.handlers.clear()
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",

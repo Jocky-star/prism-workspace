@@ -180,7 +180,9 @@ def _apply_preferences(prefs: List[Dict], date: str) -> None:
             raw = llm_complete(
                 prompt=f"用户偏好: \"{content}\"\n\n"
                        f"解析为 JSON：\n"
-                       f'{{"device": "lamp"|"other", "hours": [13,14], "scene": "off"|"focus"|"relax"|"night"|"normal", "reason": "简短描述"}}\n'
+                       f'{{"device": "lamp"|"other", "hours": [13], "scene": "off"|"focus"|"relax"|"night"|"normal", "reason": "简短描述"}}\n'
+                       f"hours 表示哪些整点小时生效。注意：\"13到14点\" 意思是 13:00-14:00，只有 13 点这个小时，hours=[13]。"
+                       f"\"20点到22点\" 意思是 20:00-22:00，hours=[20,21]。即结束时间不包含在内。\n"
                        f"如果不是设备偏好，返回 {{\"device\": \"other\"}}。只输出 JSON。",
                 system="你是一个偏好解析器。从自然语言中提取设备控制规则。",
                 max_tokens=200,

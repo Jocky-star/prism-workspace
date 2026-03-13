@@ -161,6 +161,10 @@ def get_status() -> dict:
 def determine_scene(present: bool, hour: int) -> str:
     """根据在场状态和时间决定场景
     
+    优先级：
+    1. 用户偏好覆盖（device_preferences.json）
+    2. 默认时段逻辑
+    
     Args:
         present: 是否在场
         hour: 当前小时(0-23)
@@ -171,7 +175,19 @@ def determine_scene(present: bool, hour: int) -> str:
     if not present:
         return "off"
     
-    # 在场时根据时段选择
+    # 1. 检查用户偏好覆盖
+    try:
+        import sys, os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+        from src.services.device_preferences import get_lamp_scene_override
+        override = get_lamp_scene_override(hour)
+        if override is not None:
+            log.debug(f"用户偏好覆盖: {hour}:00 → {override}")
+            return override
+    except Exception:
+        pass  # 偏好模块不可用时 fallback 到默认
+    
+    # 2. 默认时段逻辑
     if 8 <= hour < 12:
         return "focus"      # 上午：专注模式
     elif 12 <= hour < 14:
