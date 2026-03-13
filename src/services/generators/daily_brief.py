@@ -171,6 +171,9 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
   "deliveries": [
     {"title": "做了什么", "detail": "具体结果"}
   ],
+  "proactive": [
+    {"insight": "我注意到你最近...", "action": "所以我帮你...", "result": "结果/链接（可选）"}
+  ],
   "captured_intents": [
     {"quote": "用户提到的事（简短）", "action_taken": "我做了什么", "status": "done/in_progress/prepared"}
   ],
@@ -183,10 +186,18 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
   "status_note": "一句自然的状态观察（可选，没有就空字符串）"
 }
 
+各字段说明：
+- **deliveries**: 明确完成的交付物，要有具体成果
+- **proactive**: ⭐最重要的板块！根据用户最近的兴趣/状态/习惯，你主动洞察到了什么，然后主动做了什么。
+  例如：注意到用户最近聊了旅行 → 帮他查了机票和攻略；注意到运动频率下降 → 查了附近健身课；注意到在研究某个话题 → 整理了相关资料。
+  这个板块体现"我懂你"，不是被动执行命令，而是主动替你想。
+- **captured_intents**: 用户明确提到/要求的事，quote 控制在 30 字以内
+- **prepared_for_today**: 可以直接拿来用的东西
+- **tracking**: 长线跟踪项
+
 注意：
-- deliveries 要有具体成果，不是"我帮你总结了"而是把总结内容写出来
-- 不要在任何字段里出现"YYYY-MM-DD"格式的日期、"数据"、"管线"等技术词汇
-- captured_intents 的 quote 控制在 30 字以内
+- 不要在任何字段里出现日期格式、"数据"、"管线"等技术词汇
+- proactive 要基于真实信号（录音/聊天/行为），不要凭空编造
 - 如果数据不足以产生某个分类，就留空数组，不要编造
 """
 
@@ -278,6 +289,17 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
             parts.append(f"📌 **{d['title']}**")
             if d.get("detail"):
                 parts.append(f"  {d['detail']}")
+            parts.append("")
+
+    # Proactive — 我注意到...所以帮你做了...
+    proactive = b.get("proactive", [])
+    if proactive:
+        parts.append("**注意到你最近的状态，我主动做了这些**\n")
+        for p in proactive:
+            parts.append(f"💡 {p.get('insight', '')}")
+            parts.append(f"  → {p.get('action', '')}")
+            if p.get("result"):
+                parts.append(f"  📎 {p['result']}")
             parts.append("")
 
     # Captured intents — 你提到的我记住了
