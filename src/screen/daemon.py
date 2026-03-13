@@ -493,9 +493,19 @@ def recover_spi():
 
 def _display_thread_func(tracker_ref):
     """独立线程：每 DISPLAY_INTERVAL 秒刷新屏幕，不受摄像头/auto_status 阻塞影响"""
+    try:
+        _display_thread_loop(tracker_ref)
+    except Exception as e:
+        import traceback
+        log.error(f"🚨 显示线程致命错误退出: {e}\n{traceback.format_exc()}")
+
+
+def _display_thread_loop(tracker_ref):
+    """显示线程主循环（拆出来方便顶层捕获致命异常）"""
     last_display_time = 0.0
     last_spi_check = 0.0
     spi_recover_until = 0.0
+    consecutive_errors = 0
 
     # ── 渐变过渡状态追踪 ──────────────────────────────────────────────────────
     last_mode = None    # "normal" / "dim" / "summary"
@@ -567,7 +577,8 @@ def _display_thread_func(tracker_ref):
                     last_mode = current_mode
                     last_frame = img
 
-                    log.debug(f"屏幕已刷新 ({current_mode} 模式)")
+                    consecutive_errors = 0  # 成功渲染，重置错误计数
+                    log.info(f"🖥️ 屏幕已刷新 ({current_mode} 模式)")
                 except FileNotFoundError:
                     log.warning(f"framebuffer {FB_PATH} 不存在，等待重启恢复")
                     last_mode = None   # 重置缓存，重连后重建基线
@@ -585,20 +596,33 @@ def _display_thread_func(tracker_ref):
 
             time.sleep(1)  # 1秒轮询精度足够
         except Exception as e:
-            log.error(f"显示线程异常: {e}")
-            time.sleep(5)
+            consecutive_errors += 1
+            import traceback
+            log.error(f"显示线程异常 (连续第{consecutive_errors}次): {e}\n{traceback.format_exc()}")
+            if consecutive_errors >= 20:
+                log.error("🚨 显示线程连续异常过多，退出等待看门狗拉起")
+                return
+            time.sleep(min(5 * consecutive_errors, 30))  # 退避
+
+
+def _start_display_thread(tracker_weakref):
+    """启动显示线程并返回线程对象"""
+    t = threading.Thread(target=_display_thread_func, args=(tracker_weakref,), daemon=True, name="display")
+    t.start()
+    log.info("🖥️ 显示线程已启动（独立于主循环）")
+    return t
 
 
 def main_loop():
     log.info("🚀 Prism daemon 启动")
     tracker = PresenceTracker()
 
-    # 启动独立显示线程（用 weakref 避免循环引用）
     import weakref
     tracker_weakref = weakref.ref(tracker)
-    display_thread = threading.Thread(target=_display_thread_func, args=(tracker_weakref,), daemon=True)
-    display_thread.start()
-    log.info("🖥️ 显示线程已启动（独立于主循环）")
+    display_thread = _start_display_thread(tracker_weakref)
+    display_watchdog_interval = 30  # 每 30 秒检查一次显示线程
+    last_display_watchdog = time.monotonic()
+    display_crash_count = 0
 
     last_camera_time = 0.0
     last_auto_status = 0.0
@@ -663,7 +687,16 @@ def main_loop():
             except Exception as e:
                 log.debug(f"天气更新触发失败（不影响主循环）: {e}")
 
-        # ── 屏幕刷新已移至独立线程（_display_thread_func），不再阻塞主循环 ──
+        # ── 显示线程看门狗（每 30 秒检查，崩了自动拉起）──────────────
+        if now - last_display_watchdog >= display_watchdog_interval:
+            last_display_watchdog = now
+            if not display_thread.is_alive():
+                display_crash_count += 1
+                log.warning(f"⚠️ 显示线程已死亡，第 {display_crash_count} 次自动拉起")
+                display_thread = _start_display_thread(tracker_weakref)
+                if display_crash_count >= 10:
+                    log.error(f"🚨 显示线程已崩溃 {display_crash_count} 次，可能存在系统问题")
+                    # 不停止，继续尝试拉起
 
         # ── sleep：等待下次摄像头检测 ────────────────────────────
         now2 = time.monotonic()
