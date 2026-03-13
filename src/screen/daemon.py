@@ -174,7 +174,7 @@ def detect_person_vision(img) -> tuple[bool, str]:
                 "role": "user",
                 "content": [
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-                    {"type": "text", "text": "Is there a person in this image? Reply ONLY 'yes' or 'no'."},
+                    {"type": "text", "text": "Is there a real, living person currently sitting at or standing near the desk in this image? Look for visible skin (face, hands, arms). Clothes on a chair, bags, or other objects do NOT count. Reply ONLY 'yes' or 'no'."},
                 ],
             }],
         }
@@ -643,15 +643,22 @@ def main_loop():
                     # 帧差法（快速预筛）
                     motion_ratio = compute_frame_diff(img)
 
-                    # Vision API 人体检测（主检测）
-                    t0 = time.monotonic()
-                    vision_detected, vision_answer = detect_person_vision(img)
-                    vision_ms = int((time.monotonic() - t0) * 1000)
+                    # 帧差极低 + 当前已判有人 → 连续静止，跳过 Vision API
+                    # 场景：人离开后画面不变，帧差接近 0，不需要浪费 API 调用
+                    if motion_ratio < 0.005 and tracker.present:
+                        # 直接当作"未检测到人"，让 PresenceTracker 走倒计时逻辑
+                        vision_detected = False
+                        log.info(f"📷 帧差极低 {motion_ratio:.2%}，跳过 Vision API → 走倒计时")
+                    else:
+                        # Vision API 人体检测（主检测）
+                        t0 = time.monotonic()
+                        vision_detected, vision_answer = detect_person_vision(img)
+                        vision_ms = int((time.monotonic() - t0) * 1000)
 
-                    log.info(
-                        f"📷 检测完成 — Vision: {'✅ 有人' if vision_detected else '❌ 无人'} "
-                        f"({vision_ms}ms)，帧差: {motion_ratio:.2%}"
-                    )
+                        log.info(
+                            f"📷 检测完成 — Vision: {'✅ 有人' if vision_detected else '❌ 无人'} "
+                            f"({vision_ms}ms)，帧差: {motion_ratio:.2%}"
+                        )
 
                     was_present = tracker.present
                     is_present = tracker.update(vision_detected, motion_ratio)
