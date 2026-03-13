@@ -313,11 +313,14 @@ def _format_proactive_entry(p: Dict[str, Any]) -> tuple[str, Optional[str]]:
                 content=full_text,
                 options=options,
             )
-            full_text = f"{full_text}\n  _(id: {suggestion_id[:8]}...)_"
+            # suggestion_id 内部追踪用，不暴露给用户
         except Exception:
             pass
 
     return full_text, suggestion_id
+
+
+def format_brief_message(brief: Dict[str, Any]) -> str:
     """Format brief into a natural, human-friendly message.
     
     不要暴露技术细节（日期、数据源、pipeline），像秘书一样汇报：
