@@ -409,7 +409,59 @@ def _start_display_thread(tracker_weakref):
 
 # ── 主循环 ───────────────────────────────────────────────────────────────────
 
+def _acquire_pidlock() -> bool:
+    """
+    PID 锁：同一时间只允许一个 daemon 实例运行。
+    
+    如果已有另一个 daemon 在跑，打日志并退出，不会静默地双开。
+    锁文件：memory/.prism_daemon.pid
+    """
+    pidfile = MEMORY_DIR / ".prism_daemon.pid"
+    
+    if pidfile.exists():
+        try:
+            old_pid = int(pidfile.read_text().strip())
+            # 检查旧进程是否还活着
+            os.kill(old_pid, 0)  # 不发信号，只检查
+            if old_pid != os.getpid():
+                log.error(f"🚨 另一个 daemon 已在运行 (PID {old_pid})，退出")
+                log.error(f"   如果那个进程已经死了，删除 {pidfile} 后重试")
+                return False
+        except (ProcessLookupError, ValueError):
+            # 旧进程已死，清理
+            pass
+        except PermissionError:
+            log.error(f"🚨 无法检查 PID {pidfile.read_text().strip()}，退出")
+            return False
+    
+    # 写入当前 PID
+    pidfile.parent.mkdir(parents=True, exist_ok=True)
+    pidfile.write_text(str(os.getpid()))
+    log.info(f"🔒 PID 锁已获取 (PID {os.getpid()})")
+    return True
+
+
+def _release_pidlock():
+    """释放 PID 锁"""
+    pidfile = MEMORY_DIR / ".prism_daemon.pid"
+    try:
+        if pidfile.exists():
+            stored_pid = int(pidfile.read_text().strip())
+            if stored_pid == os.getpid():
+                pidfile.unlink()
+                log.info("🔓 PID 锁已释放")
+    except Exception:
+        pass
+
+
 def main_loop():
+    # PID 锁：防止双开
+    if not _acquire_pidlock():
+        sys.exit(1)
+    
+    import atexit
+    atexit.register(_release_pidlock)
+    
     log.info("🚀 Prism daemon 启动（插件化架构）")
 
     # 1. 加载配置和插件
@@ -420,6 +472,18 @@ def main_loop():
     tracker = PresenceTracker()
 
     log.info(f"📦 插件加载完成: {len(sensors)} sensors, {len(detectors)} detectors, {len(devices)} devices")
+
+    # 启动时同步一次设备状态（防止外部脚本改了设备但 daemon 不知道）
+    try:
+        hour = datetime.now(TZ).hour
+        if tracker.present:
+            log.info(f"🔌 启动同步：当前有人 → 触发 on_present (时段={hour}:00)")
+            trigger_present(devices, hour)
+        else:
+            log.info(f"🔌 启动同步：当前无人 → 触发 on_absent")
+            trigger_absent(devices)
+    except Exception as e:
+        log.warning(f"启动同步设备状态失败: {e}")
 
     # 2. 启动显示线程
     import weakref
