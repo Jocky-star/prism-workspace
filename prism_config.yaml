@@ -1,31 +1,64 @@
-# Prism 配置 — 修改后重启 daemon 生效
-# 所有字段都有默认值，不配也能跑
+# Prism 配置 — 改完重启 daemon 生效
+# 三层管线：感知 → 检测 → 执行，每层都是可替换的插件
+# 所有字段都有默认值，不配也能跑（zero-config 模式）
 
+# ── 存在判定 ──────────────────────────────────────────────────────────────────
 presence:
-  # 摄像头场景描述（用于 Vision API prompt）
-  scene: "办公桌前"        # 改成你的场景，比如 "客厅沙发" "卧室书桌"
-  absent_timeout: 300       # 几秒算离开（默认 5 分钟）
-  motion_threshold: 0.005   # 帧差阈值（默认 0.5%，越小越灵敏）
-  camera_interval: 30       # 拍照间隔秒数
+  absent_timeout: 300           # 连续无人多少秒算离开（默认 5 分钟）
+  camera_interval: 30           # 传感器采集间隔（秒）
+  motion_threshold: 0.005       # 帧差阈值（低于此值视为静止）
 
-vision:
-  model: ""                 # 留空则自动从 models.json 读取
-  timeout: 15               # API 超时秒数
-
+# ── 屏幕 ──────────────────────────────────────────────────────────────────────
 screen:
-  display_interval: 10      # 屏幕刷新间隔秒数
-  fb_path: "/dev/fb0"       # framebuffer 设备路径
+  display_interval: 10          # 屏幕刷新间隔（秒）
+  fb_path: "/dev/fb0"           # framebuffer 设备路径
 
-# 设备联动 — 有人/无人时触发的动作
-# 每个 plugin 对应 src/screen/plugins/ 下的一个 Python 文件
-devices:
-  - plugin: mijia_lamp      # 插件文件名（不含 .py）
+# ── 感知源（采集原始数据）────────────────────────────────────────────────────
+sensors:
+  - plugin: rpicam              # 树莓派摄像头（内置）
     enabled: true
-    config:                 # 传给插件的配置，每个插件不同
-      # mijia_lamp 不需要额外配置，它从 device_preferences.json 读
-  # 示例：添加更多设备
-  # - plugin: yeelight
-  #   enabled: true
+    config:
+      rotation: 180             # 摄像头物理倒置，旋转 180°
+      width: 640
+      height: 480
+  # ── 其他感知源示例（取消注释即可使用）──
+  # - plugin: usb_camera        # USB 摄像头（需要实现 sensors/usb_camera.py）
+  #   enabled: false
+  #   config:
+  #     device: /dev/video0
+
+# ── 检测器（判断有没有人）────────────────────────────────────────────────────
+# 按顺序执行，任一检测器返回 skip=True 时中断管线
+detectors:
+  - plugin: frame_diff          # 帧差辅助（快速，用于短路 Vision API）
+    enabled: true
+    config:
+      threshold: 0.005          # 帧差高于此值视为有运动
+      skip_vision_below: 0.005  # 帧差低于此值时 skip=True，跳过后续检测器
+
+  - plugin: vision_api          # LLM Vision（准确，但有 API 成本）
+    enabled: true
+    config:
+      scene: "办公桌前"         # 场景描述（嵌入 prompt）
+      model: ""                 # 空=自动选择（pa/claude-haiku-4-5）
+      timeout: 15               # API 超时秒数
+
+  # ── 其他检测器示例 ──
+  # - plugin: local_yolo        # 本地 YOLOv8（需要实现 detectors/local_yolo.py）
+  #   enabled: false
+  #   config:
+  #     model_path: /home/pi/yolov8n.pt
+  #     confidence: 0.5
+
+# ── 执行器（检测结果触发的动作）────────────────────────────────────────────
+devices:
+  - plugin: mijia_lamp          # 米家台灯（内置）
+    enabled: true
+    config: {}                  # 从 device_preferences.json 自动读取时段偏好
+
+  # ── 其他执行器示例 ──
+  # - plugin: yeelight           # Yeelight（需要实现 devices/yeelight.py）
+  #   enabled: false
   #   config:
   #     ip: "192.168.1.100"
   #     default_brightness: 80

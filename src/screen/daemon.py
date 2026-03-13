@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-prism_daemon.py — Prism 自动刷新守护进程
+prism_daemon.py — Prism 自动刷新守护进程（插件化重构版）
+
+架构：
+  三层管线：感知 (Sensor) → 检测 (Detector) → 执行 (Device)
+  daemon 只负责调度，不知道任何具体实现。
 
 功能：
-  - 每 10 秒读取 prism_state.json 并刷新屏幕
-  - 每 30 秒拍照，用 Vision API (Haiku) 检测是否有人（帧差法辅助）
+  - 每 10 秒刷新屏幕
+  - 每 30 秒采集传感器数据，运行检测器管线判断是否有人
   - 有人 → 完整状态界面；无人 → 暗屏模式
   - 检测结果写入 prism_presence.json
   - 健壮：文件读取/渲染异常不崩溃
@@ -19,19 +23,12 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-# Camera lock to prevent contention with cron scripts
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sources" / "camera"))
-from lock import camera_lock
-import logging
-
-# ── 配置加载（从 prism_config.yaml 读取，不存在时用默认值）────────────────────
-# 确保包路径可用（允许从任意目录启动 daemon）
+# ── 配置加载 ─────────────────────────────────────────────────────────────────
 _SCREEN_DIR = Path(__file__).resolve().parent
 _SRC_DIR = _SCREEN_DIR.parent
 if str(_SRC_DIR.parent) not in sys.path:
@@ -40,41 +37,31 @@ if str(_SRC_DIR.parent) not in sys.path:
 from src.screen.config_loader import get_config as _get_prism_config
 _cfg = _get_prism_config()
 
-# ── 路径配置 ────────────────────────────────────────────────────────────────
+# ── 路径配置 ─────────────────────────────────────────────────────────────────
 WORKSPACE = _cfg.workspace
 MEMORY_DIR = WORKSPACE / "memory"
 SCRIPTS_DIR = WORKSPACE / "src" / "screen"
 
 STATE_FILE    = MEMORY_DIR / "prism_state.json"
 PRESENCE_FILE = MEMORY_DIR / "prism_presence.json"
-PREV_THUMB_FILE = MEMORY_DIR / ".prism_prev_thumb.jpg"
 EVENTS_FILE   = MEMORY_DIR / "prism_events.json"
 LOG_FILE = WORKSPACE / "logs" / "prism_daemon.log"
 
 FB_PATH = _cfg.screen.fb_path
-
 TZ = timezone(timedelta(hours=8))
 
-# ── 检测参数（从配置读取）────────────────────────────────────────────────────
-MOTION_THRESHOLD = _cfg.presence.motion_threshold  # 帧差比例阈值
-ABSENT_TIMEOUT   = _cfg.presence.absent_timeout    # 连续无检测多少秒 = 离开
-CAMERA_INTERVAL  = _cfg.presence.camera_interval   # 拍照间隔（秒）
-DISPLAY_INTERVAL = _cfg.screen.display_interval    # 屏幕刷新间隔（秒）
-THUMB_W, THUMB_H = 160, 120  # 缩略图大小（帧差用）
+# ── 参数（从配置读取）────────────────────────────────────────────────────────
+ABSENT_TIMEOUT   = _cfg.presence.absent_timeout
+CAMERA_INTERVAL  = _cfg.presence.camera_interval
+DISPLAY_INTERVAL = _cfg.screen.display_interval
 
 # SPI 自动恢复参数
-SPI_HEALTH_INTERVAL = 120    # 每 120 秒检查一次 SPI 健康
-SPI_RECOVER_COOLDOWN = 300   # 恢复后冷却 5 分钟再检查
-
-# Vision API 检测参数（从配置读取，空则后续懒加载时从 models.json 自动选）
-VISION_API_MODEL = _cfg.vision.model  # 空字符串 = 自动检测
-VISION_API_TIMEOUT = _cfg.vision.timeout  # API 超时秒数
-
-# presence 场景描述（用于 Vision prompt）
-PRESENCE_SCENE = _cfg.presence.scene
+SPI_HEALTH_INTERVAL = 120
+SPI_RECOVER_COOLDOWN = 300
 
 # ── 日志 ─────────────────────────────────────────────────────────────────────
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+import logging
 logging.root.handlers.clear()
 logging.basicConfig(
     level=logging.INFO,
@@ -86,7 +73,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("prism")
 
-# ── 懒加载显示模块 ────────────────────────────────────────────────────────────
+# ── 懒加载显示模块 ───────────────────────────────────────────────────────────
 _display_module = None
 
 def get_display():
@@ -98,198 +85,28 @@ def get_display():
     return _display_module
 
 
-# ── 设备插件联动（通过 plugin_loader 触发，不直接 import 米家）─────────────────
-from src.screen.plugin_loader import trigger_present as _plugin_trigger_present
-from src.screen.plugin_loader import trigger_absent as _plugin_trigger_absent
+# ── 插件加载 ─────────────────────────────────────────────────────────────────
+from src.screen.plugin_loader import (
+    load_sensors,
+    load_detectors,
+    load_devices,
+    capture_image,
+    run_detection,
+    trigger_present,
+    trigger_absent,
+)
 
 
-def _trigger_presence_change(present: bool):
-    """触发所有设备插件的存在状态联动"""
-    try:
-        if present:
-            hour = datetime.now(TZ).hour
-            _plugin_trigger_present(hour)
-        else:
-            _plugin_trigger_absent()
-    except Exception as e:
-        log.warning(f"设备插件联动异常: {e}")
-
-
-# ── Vision API 人体检测器 ─────────────────────────────────────────────────
-_vision_api_config = None
-
-
-def _get_vision_api_config() -> dict:
-    """从 models.json 懒加载 API 配置，并自动选择模型（若配置为空）"""
-    global _vision_api_config
-    if _vision_api_config is None:
-        try:
-            models_path = Path.home() / ".openclaw/agents/main/agent/models.json"
-            with open(models_path) as f:
-                d = json.load(f)
-            prov = d["providers"]["litellm"]
-            _vision_api_config = {
-                "base_url": prov["baseUrl"],
-                "api_key": prov["apiKey"],
-                "headers": prov.get("headers", {}),
-            }
-            log.info("✅ Vision API 配置已加载")
-        except Exception as e:
-            log.error(f"Vision API 配置加载失败: {e}")
-            _vision_api_config = {}
-    return _vision_api_config
-
-
-def _resolve_vision_model() -> str:
-    """解析 Vision API 使用的模型名。配置为空时自动回退到默认 haiku 模型。"""
-    if VISION_API_MODEL:
-        return VISION_API_MODEL
-    # 默认回退（与原始硬编码保持一致）
-    return "pa/claude-haiku-4-5-20251001"
-
-
-def detect_person_vision(img) -> tuple[bool, str]:
-    """
-    用 Vision API (Haiku) 检测是否有人。
-    返回 (detected: bool, description: str)。
-    比 HOG/级联检测准确得多，尤其对坐姿/侧面/低光。
-    """
-    import base64
-    import io
-    import requests
-
-    config = _get_vision_api_config()
-    if not config.get("base_url"):
-        log.warning("Vision API 未配置，跳过检测")
-        return False, "no_config"
-
-    try:
-        t0 = time.monotonic()
-
-        # 压缩图片到 JPEG，降低 token 消耗
-        buf = io.BytesIO()
-        img_small = img.copy()
-        img_small.thumbnail((320, 240))
-        img_small.save(buf, format="JPEG", quality=60)
-        img_b64 = base64.b64encode(buf.getvalue()).decode()
-
-        headers = {
-            "Authorization": f"Bearer {config['api_key']}",
-            "Content-Type": "application/json",
-            **config["headers"],
-        }
-
-        payload = {
-            "model": _resolve_vision_model(),
-            "max_tokens": 20,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-                    {"type": "text", "text": f"Is there a real, living person currently at or near the {PRESENCE_SCENE} in this image? Look for visible skin (face, hands, arms). Clothes on a chair, bags, or other objects do NOT count. Reply ONLY 'yes' or 'no'."},
-                ],
-            }],
-        }
-
-        resp = requests.post(
-            f"{config['base_url']}/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=VISION_API_TIMEOUT,
-        )
-
-        elapsed_ms = int((time.monotonic() - t0) * 1000)
-
-        if resp.status_code != 200:
-            log.warning(f"Vision API 返回 {resp.status_code}: {resp.text[:200]}")
-            return False, f"api_error_{resp.status_code}"
-
-        result = resp.json()
-        answer = result["choices"][0]["message"]["content"].strip().lower()
-        tokens = result.get("usage", {}).get("total_tokens", 0)
-        detected = answer.startswith("yes")
-
-        log.info(f"🧠 Vision API: {'✅ 有人' if detected else '❌ 无人'} "
-                 f"(answer='{answer}', {elapsed_ms}ms, {tokens} tokens)")
-        return detected, answer
-
-    except requests.exceptions.Timeout:
-        log.warning("Vision API 超时")
-        return False, "timeout"
-    except Exception as e:
-        log.warning(f"Vision API 异常: {e}")
-        return False, f"error: {e}"
-
-
-# ── 帧差法检测运动 ────────────────────────────────────────────────────────────
-
-def compute_frame_diff(img_new) -> float:
-    """对比新帧和上一帧缩略图，返回差异比例 0.0~1.0"""
-    from PIL import Image
-    try:
-        thumb_new = img_new.convert("L").resize((THUMB_W, THUMB_H))
-        if not PREV_THUMB_FILE.exists():
-            # 没有历史帧，保存并返回「有运动」（保守策略）
-            thumb_new.save(str(PREV_THUMB_FILE))
-            return 1.0
-
-        thumb_old = Image.open(str(PREV_THUMB_FILE)).convert("L").resize((THUMB_W, THUMB_H))
-        pixels_new = thumb_new.tobytes()
-        pixels_old = thumb_old.tobytes()
-
-        total = len(pixels_new)
-        diffs = sum(1 for n, o in zip(pixels_new, pixels_old) if abs(n - o) > 20)
-        ratio = diffs / total
-
-        # 保存新帧（无论有无运动都更新参考帧，避免背景漂移）
-        thumb_new.save(str(PREV_THUMB_FILE))
-        return ratio
-    except Exception as e:
-        log.warning(f"帧差计算失败: {e}")
-        return 0.0
-
-
-def take_photo_for_detection() -> "Image or None":
-    """拍一张低分辨率照片用于检测，返回 PIL Image"""
-    try:
-        from PIL import Image
-        import io
-        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-        tmp_path = tmp.name
-        tmp.close()
-
-        env = dict(os.environ, LIBCAMERA_LOG_LEVELS="*:ERROR")
-        with camera_lock(timeout=10):
-            result = subprocess.run(
-                ["rpicam-still", "-o", tmp_path,
-                 "--width", "640", "--height", "480",
-                 "--timeout", "1000", "--nopreview",
-                 "--rotation", "180"],  # camera is physically inverted
-                capture_output=True, timeout=15, env=env
-            )
-        if result.returncode != 0:
-            log.warning(f"rpicam-still 失败: {result.stderr.decode()[:100]}")
-            os.unlink(tmp_path)
-            return None
-
-        img = Image.open(tmp_path)
-        # rotation handled by --rotation 180 in rpicam-still
-        img.load()              # 确保数据加载后再删文件
-        os.unlink(tmp_path)
-        return img
-    except Exception as e:
-        log.warning(f"拍照失败: {e}")
-        return None
-
-
-# ── 存在状态管理 ──────────────────────────────────────────────────────────────
+# ── 存在状态管理 ─────────────────────────────────────────────────────────────
 
 class PresenceTracker:
     """
-    双保险检测策略：
-      1. HOG 检测到人体 → 肯定有人，重置计时器
-      2. HOG 未检测到 + 帧差率高 → 可能有人（延长计时器，不立刻判离开）
-      3. HOG 未检测到 + 帧差率低 → 开始计时，超过 ABSENT_TIMEOUT → 离开
+    存在状态追踪器。
+
+    策略：
+    - 检测到人 → 重置计时器，present=True
+    - 未检测到人 + 帧差高 → 延长计时器（可能有人但检测器漏了）
+    - 未检测到人 + 帧差低 → 开始倒计时，超过 ABSENT_TIMEOUT → present=False
     """
 
     def __init__(self):
@@ -307,24 +124,25 @@ class PresenceTracker:
             except Exception:
                 pass
 
-    def update(self, vision_detected: bool, motion_ratio: float) -> bool:
+    def update(self, detected: bool, motion_ratio: float) -> bool:
         """
-        根据 Vision API 结果和帧差率更新状态。
+        根据检测结果和帧差率更新状态。
         返回是否有人。
         """
         now_mono = time.monotonic()
+        motion_threshold = _cfg.presence.motion_threshold
 
-        if vision_detected:
-            # Vision API 检测到人 → 确认有人，重置计时
+        if detected:
+            # 检测到人 → 确认有人，重置计时
             self.last_seen_mono = now_mono
             self.present = True
-            log.info(f"👤 Vision 检测到人 → present=True (帧差={motion_ratio:.2%})")
-        elif motion_ratio > MOTION_THRESHOLD:
-            # Vision 未检测到人，但帧差显示有运动 → 延长计时
+            log.info(f"👤 检测到人 → present=True (帧差={motion_ratio:.2%})")
+        elif motion_ratio > motion_threshold:
+            # 未检测到人，但帧差显示有运动 → 延长计时
             self.last_seen_mono = now_mono
-            log.info(f"🔄 Vision 未检测到人，但帧差高 {motion_ratio:.2%} → 延长计时")
+            log.info(f"🔄 未检测到人，但帧差高 {motion_ratio:.2%} → 延长计时")
         else:
-            # Vision 未检测到 + 帧差率低 → 开始倒计时
+            # 未检测到 + 帧差率低 → 开始倒计时
             elapsed = now_mono - self.last_seen_mono
             remaining = ABSENT_TIMEOUT - elapsed
             if elapsed > ABSENT_TIMEOUT:
@@ -332,7 +150,7 @@ class PresenceTracker:
                 log.info(f"🌑 连续 {elapsed/60:.1f} 分钟未检测到人 → present=False")
             else:
                 log.info(
-                    f"⏳ Vision 未检测到人，帧差低 {motion_ratio:.2%}，"
+                    f"⏳ 未检测到人，帧差低 {motion_ratio:.2%}，"
                     f"已 {elapsed:.0f}s / {ABSENT_TIMEOUT}s（还剩 {remaining:.0f}s 判离开）"
                 )
 
@@ -341,7 +159,6 @@ class PresenceTracker:
 
     def _save(self):
         now_iso = datetime.now(TZ).isoformat()
-        # 有人时更新 last_seen；无人时保留最后一次看到的时间
         if self.present:
             last_seen = now_iso
         else:
@@ -370,13 +187,9 @@ class PresenceTracker:
         return datetime.now(TZ).isoformat()
 
 
-# ── 主循环 ────────────────────────────────────────────────────────────────────
-
-
-# ── 事件闪屏（Event Flash）────────────────────────────────────────────────────
+# ── 事件闪屏 ─────────────────────────────────────────────────────────────────
 
 def _read_events_safe() -> list:
-    """读取 prism_events.json，返回事件列表，失败返回 []"""
     if not EVENTS_FILE.exists():
         return []
     try:
@@ -394,7 +207,6 @@ def _read_events_safe() -> list:
 
 
 def _write_events_safe(events: list):
-    """原子写回 prism_events.json（带文件锁）"""
     try:
         import fcntl
         EVENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -411,17 +223,12 @@ def _write_events_safe(events: list):
 
 
 def _get_pending_events() -> list[dict]:
-    """
-    读取事件列表，自动清理过期事件，返回待处理（未 processed 且未过期）事件。
-    同时写回清理结果。
-    """
     from datetime import datetime as _dt
     now_iso = _dt.now(TZ)
     events = _read_events_safe()
     clean = []
     pending = []
     for ev in events:
-        # 过期检查
         ts_str = ev.get("timestamp", "")
         ttl = ev.get("ttl", 30)
         try:
@@ -435,14 +242,12 @@ def _get_pending_events() -> list[dict]:
         clean.append(ev)
         if not ev.get("processed", False):
             pending.append(ev)
-    # 回写清理后的列表
     if len(clean) != len(events):
         _write_events_safe(clean)
     return pending
 
 
 def _mark_event_processed(event: dict):
-    """将某条事件标记为已处理"""
     events = _read_events_safe()
     for ev in events:
         if (ev.get("text") == event.get("text") and
@@ -452,18 +257,11 @@ def _mark_event_processed(event: dict):
 
 
 def _do_flash(display, event: dict, fb_path: str):
-    """
-    执行闪屏动画：亮-暗-亮-暗-亮，共 3 秒。
-    在调用线程同步执行（已在独立显示线程中，不阻塞主循环）。
-    """
     try:
         flash_img = display.render_flash_frame(event)
-        # 暗帧：纯黑
         from PIL import Image as _PILImage
         dark_img = _PILImage.new("RGB", (480, 320), (0, 0, 0))
 
-        # 闪 3 次：亮(0.5s) 暗(0.2s) 亮(0.5s) 暗(0.2s) 亮(0.6s) = 2.0s
-        # 然后静止停留 1 秒 → 总计 3 秒
         sequence = [
             (flash_img, 0.5),
             (dark_img,  0.2),
@@ -481,13 +279,12 @@ def _do_flash(display, event: dict, fb_path: str):
 
 
 def check_spi_health() -> bool:
-    """检查 fb0 是否可写"""
     try:
         if not os.path.exists(FB_PATH):
             return False
         with open(FB_PATH, 'r+b') as fb:
             fb.seek(0)
-            fb.write(b'\x00\x00')  # 写一个像素测试
+            fb.write(b'\x00\x00')
             fb.seek(0)
         return True
     except (IOError, OSError) as e:
@@ -496,15 +293,11 @@ def check_spi_health() -> bool:
 
 
 def recover_spi():
-    """尝试恢复屏幕显示（不卸载内核模块，只记录告警）"""
     log.warning("🔧 SPI/fb0 异常检测，记录告警等待人工干预或重启恢复")
-    # 不再 rmmod/modprobe——卸载模块会导致 fb0 消失且可能卡死
-    # 只记录日志，下次重启自动恢复
     return False
 
 
 def _display_thread_func(tracker_ref):
-    """独立线程：每 DISPLAY_INTERVAL 秒刷新屏幕，不受摄像头/auto_status 阻塞影响"""
     try:
         _display_thread_loop(tracker_ref)
     except Exception as e:
@@ -513,20 +306,18 @@ def _display_thread_func(tracker_ref):
 
 
 def _display_thread_loop(tracker_ref):
-    """显示线程主循环（拆出来方便顶层捕获致命异常）"""
     last_display_time = 0.0
     last_spi_check = 0.0
     spi_recover_until = 0.0
     consecutive_errors = 0
 
-    # ── 渐变过渡状态追踪 ──────────────────────────────────────────────────────
-    last_mode = None    # "normal" / "dim" / "summary"
-    last_frame = None   # 上一次渲染的 PIL Image，用于 blend 起点
+    last_mode = None
+    last_frame = None
 
     while True:
         try:
             now = time.monotonic()
-            # ── 事件闪屏检查（每次循环都检查，优先级最高）──
+            # ── 事件闪屏检查 ──
             try:
                 display = get_display()
                 pending = _get_pending_events()
@@ -535,7 +326,6 @@ def _display_thread_loop(tracker_ref):
                     log.info(f"⚡ 收到事件: [{ev.get('type','')}] {ev.get('text','')}")
                     _mark_event_processed(ev)
                     _do_flash(display, ev, FB_PATH)
-                    # 闪屏后立刻强制刷新正常画面，同时重置帧缓存（闪屏已破坏上一帧）
                     last_display_time = 0.0
                     last_mode = None
                     last_frame = None
@@ -547,16 +337,13 @@ def _display_thread_loop(tracker_ref):
                 last_display_time = now
                 try:
                     display = get_display()
-                    from datetime import datetime, timezone, timedelta
-                    _tz = timezone(timedelta(hours=8))
-                    _hour = datetime.now(_tz).hour
+                    _hour = datetime.now(TZ).hour
                     _state = display.load_prism_state() if hasattr(display, 'load_prism_state') else {}
                     _dismissed = _state.get("summary_dismissed", False)
 
                     tracker = tracker_ref()
                     is_present = tracker.present if tracker else True
 
-                    # ── 决定当前模式并渲染新帧 ──
                     if not is_present:
                         current_mode = "dim"
                         img = display.render_dim_frame()
@@ -572,33 +359,29 @@ def _display_thread_loop(tracker_ref):
 
                     # ── 渐变过渡 or 直接写入 ──
                     if last_mode is not None and current_mode != last_mode and last_frame is not None:
-                        # 模式发生变化 → 渐变过渡
                         try:
                             from prism_transition import fade_transition
                             log.info(f"🎞️ 模式切换 {last_mode} → {current_mode}，执行渐变过渡")
                             fade_transition(last_frame, img, FB_PATH, steps=8, duration=0.5)
                         except Exception as te:
-                            # 渐变失败时降级为直接写入，不影响正常运行
                             log.warning(f"渐变过渡失败，降级直接写入: {te}")
                             display.write_to_framebuffer(img, FB_PATH)
                     else:
-                        # 同模式内定时刷新 → 直接写入
                         display.write_to_framebuffer(img, FB_PATH)
 
-                    # ── 更新帧缓存 ──
                     last_mode = current_mode
                     last_frame = img
 
-                    consecutive_errors = 0  # 成功渲染，重置错误计数
+                    consecutive_errors = 0
                     log.info(f"🖥️ 屏幕已刷新 ({current_mode} 模式)")
                 except FileNotFoundError:
                     log.warning(f"framebuffer {FB_PATH} 不存在，等待重启恢复")
-                    last_mode = None   # 重置缓存，重连后重建基线
+                    last_mode = None
                     last_frame = None
                 except Exception as e:
                     log.error(f"屏幕渲染/写入异常: {e}")
 
-            # ── SPI 健康检查（每 120 秒）──
+            # ── SPI 健康检查 ──
             if now - last_spi_check >= SPI_HEALTH_INTERVAL and now > spi_recover_until:
                 last_spi_check = now
                 if not check_spi_health():
@@ -606,7 +389,7 @@ def _display_thread_loop(tracker_ref):
                         spi_recover_until = time.monotonic() + SPI_RECOVER_COOLDOWN
                         last_display_time = 0
 
-            time.sleep(1)  # 1秒轮询精度足够
+            time.sleep(1)
         except Exception as e:
             consecutive_errors += 1
             import traceback
@@ -614,76 +397,81 @@ def _display_thread_loop(tracker_ref):
             if consecutive_errors >= 20:
                 log.error("🚨 显示线程连续异常过多，退出等待看门狗拉起")
                 return
-            time.sleep(min(5 * consecutive_errors, 30))  # 退避
+            time.sleep(min(5 * consecutive_errors, 30))
 
 
 def _start_display_thread(tracker_weakref):
-    """启动显示线程并返回线程对象"""
     t = threading.Thread(target=_display_thread_func, args=(tracker_weakref,), daemon=True, name="display")
     t.start()
     log.info("🖥️ 显示线程已启动（独立于主循环）")
     return t
 
 
+# ── 主循环 ───────────────────────────────────────────────────────────────────
+
 def main_loop():
-    log.info("🚀 Prism daemon 启动")
+    log.info("🚀 Prism daemon 启动（插件化架构）")
+
+    # 1. 加载配置和插件
+    config = _get_prism_config()
+    sensors = load_sensors(config)
+    detectors = load_detectors(config)
+    devices = load_devices(config)
     tracker = PresenceTracker()
 
+    log.info(f"📦 插件加载完成: {len(sensors)} sensors, {len(detectors)} detectors, {len(devices)} devices")
+
+    # 2. 启动显示线程
     import weakref
     tracker_weakref = weakref.ref(tracker)
     display_thread = _start_display_thread(tracker_weakref)
-    display_watchdog_interval = 30  # 每 30 秒检查一次显示线程
+    display_watchdog_interval = 30
     last_display_watchdog = time.monotonic()
     display_crash_count = 0
 
+    # 3. 主循环变量
     last_camera_time = 0.0
     last_auto_status = 0.0
     last_weather_update = 0.0
 
-    AUTO_STATUS_INTERVAL = 30  # 每 30 秒自动感知一次
-    WEATHER_UPDATE_INTERVAL = 1800  # 每 30 分钟更新天气
+    AUTO_STATUS_INTERVAL = 30
+    WEATHER_UPDATE_INTERVAL = 1800
 
     while True:
         now = time.monotonic()
 
-        # ── 摄像头检测（每 30 秒）──────────────────────────────────────────
+        # ── 感知 → 检测 → 判定 → 执行 ──────────────────────────────────
         if now - last_camera_time >= CAMERA_INTERVAL:
             last_camera_time = now
             try:
-                img = take_photo_for_detection()
-                if img is not None:
-                    # 帧差法（快速预筛）
-                    motion_ratio = compute_frame_diff(img)
+                # 1. 感知：采集图像
+                image = capture_image(sensors)
+                if image is None:
+                    log.debug("所有 sensor 均失败，跳过本次检测")
+                    continue
 
-                    # 帧差极低 + 当前已判有人 → 连续静止，跳过 Vision API
-                    # 场景：人离开后画面不变，帧差接近 0，不需要浪费 API 调用
-                    if motion_ratio < 0.005 and tracker.present:
-                        # 直接当作"未检测到人"，让 PresenceTracker 走倒计时逻辑
-                        vision_detected = False
-                        log.info(f"📷 帧差极低 {motion_ratio:.2%}，跳过 Vision API → 走倒计时")
+                # 2. 检测：运行检测器管线
+                context = {"prev_present": tracker.present}
+                detected = run_detection(detectors, image, context)
+
+                # 3. 判定：更新存在状态
+                motion_ratio = context.get("motion_ratio", 0.0)
+                was_present = tracker.present
+                is_present = tracker.update(detected, motion_ratio)
+
+                # 4. 执行：状态变化时触发设备
+                if was_present != is_present:
+                    log.info(f"🔔 存在状态变化: {'有人 🟢' if is_present else '无人 ⚫'}")
+                    hour = datetime.now(TZ).hour
+                    if is_present:
+                        trigger_present(devices, hour)
                     else:
-                        # Vision API 人体检测（主检测）
-                        t0 = time.monotonic()
-                        vision_detected, vision_answer = detect_person_vision(img)
-                        vision_ms = int((time.monotonic() - t0) * 1000)
+                        trigger_absent(devices)
 
-                        log.info(
-                            f"📷 检测完成 — Vision: {'✅ 有人' if vision_detected else '❌ 无人'} "
-                            f"({vision_ms}ms)，帧差: {motion_ratio:.2%}"
-                        )
-
-                    was_present = tracker.present
-                    is_present = tracker.update(vision_detected, motion_ratio)
-                    if was_present != is_present:
-                        log.info(f"🔔 存在状态变化: {'有人 🟢' if is_present else '无人 ⚫'}")
-                        _trigger_presence_change(is_present)
-                else:
-                    # 拍照失败时保守策略：维持当前状态（不改变）
-                    log.debug("拍照失败，跳过本次检测")
             except Exception as e:
-                log.error(f"摄像头检测异常: {e}")
+                log.error(f"检测管线异常: {e}")
 
-        # ── 自动状态感知（每 30 秒）───────────────────────────────────────────
+        # ── 自动状态感知 ──────────────────────────────────────────────
         if now - last_auto_status >= AUTO_STATUS_INTERVAL:
             last_auto_status = now
             try:
@@ -694,7 +482,7 @@ def main_loop():
             except Exception as e:
                 log.debug(f"自动状态感知异常: {e}")
 
-        # ── 天气更新（每 30 分钟）─────────────────────────────────────────────
+        # ── 天气更新 ──────────────────────────────────────────────────
         if now - last_weather_update >= WEATHER_UPDATE_INTERVAL:
             last_weather_update = now
             try:
@@ -706,7 +494,7 @@ def main_loop():
             except Exception as e:
                 log.debug(f"天气更新触发失败（不影响主循环）: {e}")
 
-        # ── 显示线程看门狗（每 30 秒检查，崩了自动拉起）──────────────
+        # ── 显示线程看门狗 ────────────────────────────────────────────
         if now - last_display_watchdog >= display_watchdog_interval:
             last_display_watchdog = now
             if not display_thread.is_alive():
@@ -715,9 +503,8 @@ def main_loop():
                 display_thread = _start_display_thread(tracker_weakref)
                 if display_crash_count >= 10:
                     log.error(f"🚨 显示线程已崩溃 {display_crash_count} 次，可能存在系统问题")
-                    # 不停止，继续尝试拉起
 
-        # ── sleep：等待下次摄像头检测 ────────────────────────────
+        # ── sleep ─────────────────────────────────────────────────────
         now2 = time.monotonic()
         next_camera = last_camera_time + CAMERA_INTERVAL
         sleep_secs = max(0.5, next_camera - now2)
@@ -730,12 +517,10 @@ def main():
     args = parser.parse_args()
 
     if args.daemon:
-        # 简单 daemonize：fork 后台运行
         pid = os.fork()
         if pid > 0:
             print(f"✅ Prism daemon 已在后台启动 (pid={pid})")
             sys.exit(0)
-        # 子进程
         os.setsid()
         sys.stdin = open(os.devnull, "r")
 
