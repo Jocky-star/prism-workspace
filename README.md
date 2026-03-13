@@ -1,301 +1,229 @@
-# Prism — Personal Ambient Intelligence
+# Prism — 理解你，然后为你做事
 
-> 一个运行在树莓派上的桌面智能终端，它认识你、记住你、预判你需要什么。
+> 从多源数据中理解用户，主动提供个性化服务。不需要配置，只需要相处。
 
-Prism 不是一个需要你打开、操作、设置的应用。它是一个安静存在于桌面的设备——通过摄像头感知你的存在，通过屏幕与你交流，通过 AI 理解你的习惯和需求，然后主动为你做事。
+Prism 不是一个需要你打开、操作、设置的应用。它通过录音、对话、摄像头等数据源持续理解你——你的工作节奏、社交关系、兴趣偏好、情绪状态——然后主动为你做事。
 
-没有设置界面。没有配置文件。**个性化不是配置，是相处。**
+**不给建议，给结果。** 不说"建议你去做XX"，而是直接帮你做了。
 
 ## 它能做什么
 
-### 🧠 理解你
+### 🧠 理解你（多数据源 → 用户画像）
 
-从日常录音数据中提取你的行为模式、社交关系、兴趣意图：
+| 数据源 | 说明 | 提取内容 |
+|--------|------|----------|
+| 录音 | 日常录音转写（mf_scene_v2.x） | 事件、意图、情绪、人物关系 |
+| 对话 | 与 AI 助手的聊天记录 | 需求、偏好、反馈 |
+| 摄像头 | 桌面摄像头（可选） | 存在状态、姿态、表情 |
+| 行为 | 习惯预测引擎 | 作息规律、行为模式 |
+| 天气 | 实时天气 | 出行/穿衣建议 |
+| 记忆 | 每日记忆日志 | 历史事件、长期偏好 |
 
-- **感知层**：识别人物、地点、事件、意图（`pi_perception.py`）
-- **理解层**：构建用户画像、社交图谱、行为模式（`pi_understand.py`）
-- **精炼层**：LLM 每日/每周深度分析，持续修正理解（`pi_refine.py`, `pi_weekly_refine.py`）
-- **行动层**：基于理解主动行动——运动提醒、社交关怀、待办跟进（`pi_action.py`）
+**插件化架构**：有什么数据就用什么，缺少的自动跳过，不影响其他功能。新数据源只需继承 `DataSource` 类。
 
-### 📺 桌面屏幕
+### 🎯 服务你（理解 → 行动）
 
-3.5 寸 SPI 屏幕（480×320），三种模式自动切换：
+| 服务 | 触发 | 做什么 |
+|------|------|--------|
+| **晨间 Brief** | 每天 8:30 | 昨天帮你做了什么 + 今天准备好的内容 |
+| **会议洞察** | 有会议时 | 分歧点、你的角色、未决项、行动项 |
+| **意图追踪** | 持续 | 你说"想去福州" → 自动查机票推方案 |
+| **情绪关怀** | 多信号叠加 | 检测高压信号，像朋友一样关心 |
+| **人际洞察** | 每周 | 本周人际动态 + 具体建议 |
+| **设备偏好** | 对话触发 | "中午不开灯" → 台灯自动调整 |
 
-- **暗屏**：无人时显示时间 + 天气，低功耗
+**用户可选**：首次使用推送服务菜单，你选择订阅哪些，随时可调。
+
+### 💡 设备控制（理解 → 自动化）
+
+说一句"中午 13 到 14 点不开台灯"，完整链路自动运行：
+
+```
+对话捕捉 → LLM 意图分类(preference) → 解析为设备规则 → 写入偏好 → 立即执行 → 持续生效
+```
+
+不需要打开任何设置，不需要知道有配置文件存在。**个性化是相处，不是配置。**
+
+### 📺 桌面屏幕（可选，需树莓派）
+
+3.5 寸 SPI 屏幕，三种模式自动切换：
+- **暗屏**：无人时显示时间 + 天气
 - **状态板**：有人时显示当前任务 / 已完成 / 提醒
 - **便签**：傍晚自动展示今日摘要
 
-摄像头检测到你坐下 → 屏幕亮起 → 显示你需要的信息。你离开 → 屏幕回归安静。
-
-### 💡 智能联动
-
-- **米家台灯**：根据时段和你的存在自动调节灯光场景
-- **事件闪屏**：重要事件三色闪屏提醒（红/蓝/绿）
-- **天气**：实时天气显示，出门前一目了然
-
-### 🔔 推送（宁缺毋滥）
-
-只推有价值的内容，绝不用垃圾信息骚扰你：
-
-| 等级 | 内容 | 渠道 |
-|------|------|------|
-| S 级 | 经 LLM 精炼的周报 | 飞书 |
-| A 级 | 高优待办跟进提醒 | Prism 屏幕 |
-| B 级 | 股票/时效性提醒 | Prism 屏幕 |
-| C/D 级 | 低置信度观察 | 仅记录，不推送 |
+摄像头检测到你 → 屏幕亮起 → 显示你需要的信息。你离开 → 屏幕回归安静。
 
 ## 架构
 
 ```
-录音数据 / 摄像头 / 传感器
-        ↓
-┌─────────────────────────────┐
-│  感知层 (pi_perception)      │  提取实体、事件、意图、情境
-├─────────────────────────────┤
-│  理解层 (pi_understand)      │  画像、关系、模式
-├─────────────────────────────┤
-│  精炼层 (pi_refine)          │  LLM 深度分析 + 每周回顾
-├─────────────────────────────┤
-│  行动层 (pi_action)          │  自主行动 + 推送决策
-└─────────────────────────────┘
-        ↓
-   Prism 屏幕 / 飞书 / 米家
+┌────────────────────────────────────────────────────────┐
+│                     数据源（可扩展）                       │
+│  录音 │ 对话 │ 摄像头 │ 行为 │ 天气 │ 记忆 │ ...        │
+└───────┬───────┬────────┬──────┬──────┬──────┬──────────┘
+        │       │        │      │      │      │
+        ▼       ▼        ▼      ▼      ▼      ▼
+┌─────────────────────────────────────────────────────────┐
+│                    感知层 (perception)                    │
+│            提取实体、事件、意图、情境                        │
+├─────────────────────────────────────────────────────────┤
+│                    理解层 (understand)                    │
+│            用户画像、社交图谱、行为模式                      │
+├─────────────────────────────────────────────────────────┤
+│                  服务生成层 (services)                    │
+│  晨间Brief │ 会议洞察 │ 意图追踪 │ 情绪关怀 │ 设备偏好     │
+├─────────────────────────────────────────────────────────┤
+│                    推送 / 执行层                          │
+│         飞书消息 │ Prism 屏幕 │ 米家台灯 │ ...           │
+└─────────────────────────────────────────────────────────┘
 ```
 
-每一层独立脚本，进程隔离，通过 JSON 文件通信。
+## 快速开始
 
-## 硬件
+### 1. 环境要求
+
+- Python 3.10+
+- [OpenClaw](https://github.com/openclaw/openclaw) 运行中
+- LLM API（兼容 OpenAI 格式）
+
+### 2. 配置 LLM
+
+```bash
+# 方式一：环境变量（推荐新用户）
+export LLM_BASE_URL=https://your-api-endpoint/v1
+export LLM_API_KEY=your-api-key
+export LLM_MODEL=claude-haiku-4-5-20251001  # 可选
+
+# 方式二：models.json（OpenClaw 用户自动读取）
+# 如果 ~/.openclaw/agents/main/agent/models.json 已配好 litellm provider，无需额外配置
+```
+
+### 3. 看看你有什么数据
+
+```bash
+python3 src/services/data_sources.py --discover
+```
+
+输出示例（新用户只有对话数据）：
+```
+✅ chat — 对话记录（chat_messages.jsonl）
+❌ audio — 录音数据（无数据，跳过）
+❌ vision — 摄像头（无数据，跳过）
+```
+
+### 4. 跑一次试试
+
+```bash
+# Dry-run（不调 LLM，验证数据流通）
+python3 src/services/pipeline.py --dry-run
+
+# 真实运行（调 LLM 生成内容）
+python3 src/services/pipeline.py --date 2026-03-12
+```
+
+### 5. 看看生成了什么
+
+```bash
+# 晨间 Brief
+python3 src/services/generators/daily_brief.py --date 2026-03-12 --format
+
+# 意图追踪
+python3 src/services/generators/intent_tracker.py --date 2026-03-12
+
+# 服务偏好菜单
+python3 src/services/pipeline.py --check-prefs
+```
+
+## 文件结构
+
+```
+src/
+├── services/                    # 🎯 服务闭环系统（核心）
+│   ├── README.md                #    详细文档
+│   ├── config.py                #    统一配置（路径自动检测）
+│   ├── llm_client.py            #    LLM 调用（环境变量 / models.json）
+│   ├── data_sources.py          #    多数据源适配器（插件注册制）
+│   ├── preferences.py           #    用户服务偏好管理
+│   ├── device_preferences.py    #    设备偏好（台灯等）
+│   ├── pipeline.py              #    服务管线编排
+│   └── generators/              #    服务生成器
+│       ├── daily_brief.py       #      晨间简报
+│       ├── meeting_insight.py   #      会议洞察
+│       ├── intent_tracker.py    #      意图追踪与行动
+│       ├── emotion_care.py      #      情绪关怀
+│       └── social_insight.py    #      人际洞察
+│
+├── intelligence/                # 🧠 智能理解层
+│   ├── perception.py            #    感知：提取实体/事件/意图
+│   ├── understand.py            #    理解：画像/关系/模式
+│   ├── refine.py                #    精炼：LLM 深度分析
+│   └── weekly_refine.py         #    每周回顾
+│
+├── actions/                     # 🎬 执行层
+│   ├── planning/                #    规划与调度
+│   ├── monitoring/              #    监控（新闻/股票等）
+│   └── integrations/            #    外部设备（米家台灯）
+│
+├── screen/                      # 📺 Prism 屏幕（可选，需树莓派）
+│   ├── daemon.py                #    主 daemon
+│   ├── display.py               #    渲染引擎
+│   └── ...
+│
+└── infra/                       # ⚙️ 基础设施
+    └── ...
+```
+
+## 扩展
+
+### 新增数据源
+
+```python
+# src/services/data_sources.py 中添加
+
+class CalendarDataSource(DataSource):
+    name = "calendar"
+    description = "日历数据"
+    
+    def is_available(self) -> bool:
+        return (MEMORY_DIR / "calendar.json").exists()
+    
+    def get_today_data(self, date: str) -> Dict[str, Any]:
+        # 实现数据读取...
+
+# 注册到 ALL_SOURCES 列表
+ALL_SOURCES.append(CalendarDataSource)
+```
+
+### 新增服务
+
+在 `src/services/generators/` 下新建文件，实现 `generate_xxx()` 函数，然后在 `pipeline.py` 中注册。
+
+详见 [src/services/README.md](src/services/README.md)。
+
+## 设计理念
+
+1. **不给建议，给结果** — 不是"你可能需要做XX"，而是"我已经帮你做了XX"
+2. **个性化是相处，不是配置** — 没有设置界面，通过持续理解来适应你
+3. **插件化** — 有什么数据就用什么，缺了不崩溃，新数据源随时加
+4. **宁缺毋滥** — 没有有价值内容时不推送，不凑数
+5. **自驱力** — 理解你之后主动行动，不等指令
+
+## 硬件（可选）
+
+完整的 Prism 硬件终端需要：
 
 | 组件 | 型号 | 用途 |
 |------|------|------|
 | 主板 | Raspberry Pi 5 | 计算核心 |
 | 屏幕 | MHS35 3.5" SPI (ili9486) | 480×320 状态显示 |
 | 摄像头 | IMX708 | 存在检测 + 视觉识别 |
-| 存储 | 32GB SD（计划升级 SSD） | 系统 + 数据 |
 
-总 BOM ≈ ¥975
-
-## 文件结构
-
-```
-src/
-├── sources/                        # 🔌 外部数据源（采集入口）
-│   ├── camera/                     #    摄像头
-│   │   ├── capture.py              #      拍照 + AI 身份识别
-│   │   ├── lock.py                 #      flock 资源锁（防多进程抢占）
-│   │   ├── timelapse.py            #      延时摄影
-│   │   └── wellness.py             #      健康关怀检测
-│   ├── audio/                      #    录音数据
-│   │   └── fetch.py                #      拉取转写数据
-│   ├── stock/                      #    股票/财经
-│   │   ├── news_fetcher.py         #      消息面抓取
-│   │   └── news_monitor.py         #      异动监控
-│   └── README.md                   #    如何接入新数据源
-│
-├── intelligence/                   # 🧠 智能理解（纯理解，不执行）
-│   ├── perception.py               #    感知：提取实体/事件/意图/情境
-│   ├── understand.py               #    理解：画像/关系/模式
-│   ├── refine.py                   #    精炼：LLM 每日分析
-│   ├── weekly_refine.py            #    精炼：每周深度回顾
-│   └── bootstrap.py                #    冷启动：批量处理历史数据
-│
-├── actions/                        # 🎬 执行规划层（理解之后的所有动作）
-│   ├── planning/                   #    核心规划
-│   │   ├── daily_pipeline.py       #      每日管线：采集→感知→理解→行动
-│   │   ├── action.py               #      自主行动规划与执行
-│   │   ├── generate_insights.py    #      洞察生成（含质量门控）
-│   │   ├── insight_daemon.py       #      推送 daemon（Prism/飞书）
-│   │   └── check_notifications.py  #      通知队列检查
-│   ├── monitoring/                 #    监控类行动
-│   │   ├── ai_news_radar.py        #      AI 新闻雷达
-│   │   ├── forex_monitor.py        #      外汇监控
-│   │   └── ...                     #      股票信号、小红书等
-│   ├── analysis/                   #    分析类行动
-│   │   ├── api_usage_report.py     #      API 用量统计
-│   │   └── ...                     #      日报分析等
-│   └── integrations/               #    外部服务
-│       └── mijia_lamp.py           #      米家台灯控制
-│
-├── screen/                         # 📺 Prism 屏幕（独立模块）
-│   ├── daemon.py                   #    主 daemon：刷新+存在检测+联动
-│   ├── display.py                  #    渲染：fb0 直写 + 2x 超采样
-│   ├── update.py                   #    CLI：更新屏幕状态
-│   ├── event.py                    #    事件闪屏：三色提醒
-│   ├── weather.py                  #    天气模块
-│   ├── transition.py               #    渐变过渡动画
-│   ├── intelligence.py             #    智能内容生成
-│   ├── auto_status.py              #    状态自动流转
-│   ├── task.py                     #    任务管理
-│   └── mijia.py                    #    米家联动逻辑
-│
-├── data/                           # 📊 数据处理
-│   ├── daily_digest.py             #    录音每日摘要
-│   ├── idea_capture.py             #    灵感捕捉
-│   └── weekly_review.py            #    每周行为回顾
-│
-└── infra/                          # ⚙️ 基础设施
-    ├── gateway_watchdog.sh          #    网关看门狗
-    ├── camera_cleanup.sh            #    照片自动清理
-    └── post_update_restart.sh       #    更新后自动重启
-
-docs/
-├── intelligence-system-design.md   # 智能理解系统设计文档
-├── data-loop-design.md             # 数据闭环设计
-├── gateway-reliability.md          # 网关可靠性方案
-├── service-evolution-design.md     # 服务演进设计
-├── prism-ssd-knob-plan.md          # SSD + 旋钮扩展计划
-└── xhs-content-upgrade-plan.md     # 小红书内容升级方案
-```
-
-## 快速开始
-
-### 环境要求
-
-- Raspberry Pi 5（4GB+ RAM）
-- MHS35 SPI 屏幕（ili9486 驱动）
-- IMX708 摄像头模块
-- Python 3.11+
-- [OpenClaw](https://github.com/openclaw/openclaw) 作为 Agent 框架
-- LLM API（兼容 OpenAI 格式）
-
-### 部署
-
-```bash
-# 1. 克隆代码
-git clone git@github.com:Jocky-star/prism-workspace.git
-cd prism-workspace
-
-# 2. 安装依赖
-pip install pillow requests
-
-# 3. 配置 LLM API（在 OpenClaw 的 models.json 中配置）
-
-# 4. 冷启动（首次运行，处理历史录音数据）
-python3 src/intelligence/bootstrap.py
-
-# 5. 启动屏幕 daemon
-python3 src/screen/daemon.py --daemon
-
-# 6. 启动洞察推送 daemon
-python3 src/actions/planning/insight_daemon.py --daemon
-
-# 7. 设置定时任务
-# 每日管线（23:40）
-# 每周精炼（周日 21:00）
-# 行动检查（9:00-22:00 每小时）
-```
-
-### systemd 服务（推荐）
-
-```ini
-# ~/.config/systemd/user/prism-display.service
-[Unit]
-Description=Prism Display Daemon
-After=default.target
-
-[Service]
-ExecStart=/usr/bin/python3 /path/to/src/screen/daemon.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=default.target
-```
-
-```bash
-systemctl --user enable prism-display.service
-systemctl --user start prism-display.service
-```
-
-## 给 AI Agent 使用
-
-本项目包含一份 [`SKILL.md`](./SKILL.md)，是面向 AI Agent 的操作手册。如果你使用 [OpenClaw](https://github.com/openclaw/openclaw) 或其他 Agent 框架，可以直接将 SKILL.md 注入到 Agent 的上下文中，Agent 就能自主操作整个系统。
-
-### 最简单的方式：一段话搞定
-
-把下面这段话直接发给你的 Agent（ChatGPT / Claude / OpenClaw / 任何能执行命令的 Agent），它就能接管 Prism：
-
-> 我在树莓派上部署了 Prism 智能桌面终端，代码在 `~/.openclaw/workspace/`。请先读 `~/.openclaw/workspace/SKILL.md`，里面有完整的命令手册。读完后你就知道怎么操作了——包括更新屏幕、运行智能管线、查看用户画像、管理推送。所有命令都是 `python3 scripts/xxx.py`，直接执行就行。
-
-如果 Agent 没有直接访问文件系统的能力，把 SKILL.md 的内容贴给它也行：
-
-> 你现在负责操作一个叫 Prism 的树莓派桌面智能终端。以下是操作手册：
->
-> [粘贴 SKILL.md 全文]
->
-> 请根据这份手册来操作系统。
-
-### 方式一：OpenClaw Skill（推荐）
-
-将本项目作为 OpenClaw skill 安装：
-
-```bash
-# 在 OpenClaw workspace 的 skills/ 目录下 clone
-cd ~/.openclaw/workspace/skills/
-git clone git@github.com:Jocky-star/prism-workspace.git prism
-
-# OpenClaw 会自动扫描 skills/ 下的 SKILL.md，Agent 在需要时自动加载
-```
-
-或者在 `AGENTS.md` 中手动注册：
-
-```markdown
-## Available Skills
-- prism: ~/.openclaw/workspace/skills/prism/SKILL.md
-```
-
-### 方式二：直接喂给任意 Agent
-
-把 SKILL.md 内容作为 system prompt 或上下文注入：
-
-```python
-# 读取 SKILL.md 作为 Agent 的参考
-with open("SKILL.md") as f:
-    skill_context = f.read()
-
-messages = [
-    {"role": "system", "content": f"你可以使用以下工具操作 Prism 系统：\n\n{skill_context}"},
-    {"role": "user", "content": "更新屏幕显示'正在开会'"}
-]
-```
-
-### 方式三：作为 MCP / Tool Description
-
-SKILL.md 中的每个命令都可以封装为 tool call：
-
-```json
-{
-  "name": "prism_update_task",
-  "description": "更新 Prism 屏幕当前任务",
-  "parameters": {
-    "task": { "type": "string", "description": "当前任务描述，12字以内" }
-  },
-  "command": "python3 src/screen/update.py --task '{task}'"
-}
-```
-
-### Agent 能做什么
-
-拿到 SKILL.md 后，Agent 可以：
-
-- 🖥️ 控制屏幕显示（任务/完成/提醒/闪屏）
-- 🧠 运行智能理解管线（感知→理解→精炼→行动）
-- 📊 查询用户画像、行为模式、社交关系
-- 💡 管理推送（遵守质量门控规则）
-- 🔧 检查和重启后台服务
-- 📷 调用摄像头拍照识别
-
-## 设计理念
-
-1. **个性化是相处，不是配置** — 没有设置页面，Agent 通过持续观察和理解来适应你
-2. **宁缺毋滥** — 推送必须过质量门控，一条错误推送的伤害大于十条正确推送的价值
-3. **进程隔离** — 每个脚本独立运行，通过 JSON 文件通信，任何一个崩溃不影响其他
-4. **隐私优先** — 所有数据本地处理，不上传云端，代码仓库排除一切隐私数据
-5. **自驱力** — 理解用户后主动行动，不是等指令的工具
+没有硬件也能用——服务系统只需要数据源和 LLM API。
 
 ## 产品文档
 
-完整产品设计文档（飞书）：[Prism v3.1 产品书](https://ccnq3wnum0kr.feishu.cn/docx/YnGAd3FomoALdKx4n9McCQ7dnPd)
+- [服务闭环设计](docs/service-loop-design.md)
+- [智能理解系统设计](docs/intelligence-system-design.md)
+- [完整产品书 (飞书)](https://ccnq3wnum0kr.feishu.cn/docx/YnGAd3FomoALdKx4n9McCQ7dnPd)
 
 ## License
 
