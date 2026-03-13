@@ -122,6 +122,10 @@ python3 src/intelligence/bootstrap.py
 
 ### Prism 屏幕（需树莓派 + SPI 屏幕）
 
+**默认零配置**：启动 daemon 后，屏幕会自动监听 OpenClaw gateway 的 session 活动，推断并显示当前状态。不需要手动调用任何命令。
+
+**想手动控制？** 手动设置后 5 分钟内不会被自动推断覆盖：
+
 ```bash
 # 更新当前任务
 python3 src/screen/update.py --task "正在做的事"
@@ -135,6 +139,13 @@ python3 src/screen/update.py --note "提醒内容"
 # 事件闪屏（alert=红/info=蓝/done=绿）
 python3 src/screen/event.py --type info --text "有新消息"
 ```
+
+**也可以直接写文件**（任何语言/脚本都行）：
+```bash
+echo '{"current_task": "我的任务", "auto_inferred": false}' > memory/prism_state.json
+```
+
+详细协议见 [STATE_PROTOCOL.md](src/screen/STATE_PROTOCOL.md)。
 
 ### 米家台灯
 
