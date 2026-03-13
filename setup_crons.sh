@@ -30,30 +30,36 @@ echo ""
 echo "🌅 安装: 晨间 Brief (每天 8:30)..."
 openclaw cron add \
   --name "晨间Brief推送" \
-  --schedule "30 8 * * *" \
-  --prompt "执行晨间 Brief 推送：cd $SCRIPT_DIR && python3 src/services/morning_push.py。把输出的 Brief 文本发给用户。" \
+  --cron "30 8 * * *" \
+  --message "执行晨间 Brief 推送：cd $SCRIPT_DIR && python3 src/services/morning_push.py 2>/dev/null。把输出的 Brief 文本完整发给用户。" \
   --model "litellm/pa/claude-sonnet-4-6" \
-  --deliver announce \
+  --announce \
+  --timeout-seconds 300 \
+  --tz "Asia/Shanghai" \
   2>/dev/null && echo "  ✅ 已安装" || echo "  ⚠️ 安装失败（可能已存在）"
 
 # 2. Daily Pipeline
 echo "🔄 安装: Daily Pipeline (每天 23:40)..."
 openclaw cron add \
   --name "每日服务管线" \
-  --schedule "40 23 * * *" \
-  --prompt "执行每日服务管线：cd $SCRIPT_DIR && python3 src/services/pipeline.py --date \$(date +%Y-%m-%d)。总结执行结果。" \
+  --cron "40 23 * * *" \
+  --message "执行每日服务管线：cd $SCRIPT_DIR && python3 -c \"import sys; sys.path.insert(0,'.'); from src.services.pipeline import run_daily; from datetime import datetime, timezone, timedelta; d=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d'); r=run_daily(d); print(f'Done: {len(r.errors)} errors')\"。如果有 errors 汇报给用户。" \
   --model "litellm/pa/claude-sonnet-4-6" \
-  --deliver none \
+  --no-deliver \
+  --timeout-seconds 300 \
+  --tz "Asia/Shanghai" \
   2>/dev/null && echo "  ✅ 已安装" || echo "  ⚠️ 安装失败（可能已存在）"
 
 # 3. Weekly Pipeline
 echo "📊 安装: Weekly Pipeline (每周日 21:00)..."
 openclaw cron add \
   --name "每周人际洞察" \
-  --schedule "0 21 * * 0" \
-  --prompt "执行每周人际洞察：cd $SCRIPT_DIR && python3 src/services/pipeline.py --date \$(date +%Y-%m-%d) --pipeline weekly。总结执行结果并发给用户。" \
+  --cron "0 21 * * 0" \
+  --message "执行每周人际洞察：cd $SCRIPT_DIR && python3 -c \"import sys; sys.path.insert(0,'.'); from src.services.pipeline import run_weekly; from datetime import datetime, timezone, timedelta; d=datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d'); r=run_weekly(d); print(f'Done: {len(r.errors)} errors')\"。把结果总结发给用户。" \
   --model "litellm/pa/claude-sonnet-4-6" \
-  --deliver announce \
+  --announce \
+  --timeout-seconds 300 \
+  --tz "Asia/Shanghai" \
   2>/dev/null && echo "  ✅ 已安装" || echo "  ⚠️ 安装失败（可能已存在）"
 
 echo ""
@@ -63,3 +69,4 @@ echo "管理命令："
 echo "  openclaw cron list          # 查看所有定时任务"
 echo "  openclaw cron disable <id>  # 禁用某个任务"
 echo "  openclaw cron enable <id>   # 启用某个任务"
+echo "  openclaw cron run <id>      # 手动触发一次"
