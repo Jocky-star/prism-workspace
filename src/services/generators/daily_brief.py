@@ -196,7 +196,7 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
 - **deliveries**: 只从 action_log 中 category=delivery 的记录生成。没有就空数组。
 - **proactive**: 只从 action_log 中 category=proactive 的记录生成。没有就空数组。每条精简：insight ≤ 20字，action ≤ 30字。
 - **captured_intents**: 从录音/对话中提取用户提到但可能还没被执行的意图。如果 action_log 里有对应的 intent_followup 记录，status 标 done。
-- **prepared_for_today**: 有可以直接用的交付物才写，没有就空数组。
+- **prepared_for_today**: 有可以直接用的交付物才写，没有就空数组。如果涉及飞书文档，content 里必须包含完整链接（格式：https://ccnq3wnum0kr.feishu.cn/docx/{doc_token}）。
 - **tracking**: 长线事项的进展。
 
 ⚠️ 宁可 deliveries 和 proactive 为空，也绝不编造。Brief 的信任感比内容丰富度重要 100 倍。
@@ -375,6 +375,14 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
             if p.get("content"):
                 # 截取前 200 字，避免太长
                 content = p["content"]
+                # 自动把裸 doc_token 或不完整链接转成带租户域名的完整链接
+                import re
+                # 修复 feishu.cn/docx/xxx → ccnq3wnum0kr.feishu.cn/docx/xxx
+                content = re.sub(
+                    r'https?://feishu\.cn/(docx|base|wiki)/',
+                    r'https://ccnq3wnum0kr.feishu.cn/\1/',
+                    content
+                )
                 if len(content) > 200:
                     content = content[:197] + "..."
                 parts.append(f"  {content}")
