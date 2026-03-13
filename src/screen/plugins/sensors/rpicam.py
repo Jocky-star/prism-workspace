@@ -36,7 +36,7 @@ def _get_camera_lock():
     """懒加载 camera_lock，允许在没有锁文件时降级"""
     try:
         # src/sources/camera/lock.py
-        lock_dir = Path(__file__).resolve().parents[4] / "sources" / "camera"
+        lock_dir = Path(__file__).resolve().parents[3] / "sources" / "camera"
         if str(lock_dir) not in sys.path:
             sys.path.insert(0, str(lock_dir))
         from lock import camera_lock
