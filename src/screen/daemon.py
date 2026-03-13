@@ -23,7 +23,6 @@ import json
 import os
 import subprocess
 import sys
-import threading
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -44,20 +43,13 @@ SCRIPTS_DIR = WORKSPACE / "src" / "screen"
 
 STATE_FILE    = MEMORY_DIR / "prism_state.json"
 PRESENCE_FILE = MEMORY_DIR / "prism_presence.json"
-EVENTS_FILE   = MEMORY_DIR / "prism_events.json"
 LOG_FILE = WORKSPACE / "logs" / "prism_daemon.log"
 
-FB_PATH = _cfg.screen.fb_path
 TZ = timezone(timedelta(hours=8))
 
 # ── 参数（从配置读取）────────────────────────────────────────────────────────
 ABSENT_TIMEOUT   = _cfg.presence.absent_timeout
 CAMERA_INTERVAL  = _cfg.presence.camera_interval
-DISPLAY_INTERVAL = _cfg.screen.display_interval
-
-# SPI 自动恢复参数
-SPI_HEALTH_INTERVAL = 120
-SPI_RECOVER_COOLDOWN = 300
 
 # ── 日志 ─────────────────────────────────────────────────────────────────────
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -72,18 +64,6 @@ logging.basicConfig(
     ]
 )
 log = logging.getLogger("prism")
-
-# ── 懒加载显示模块 ───────────────────────────────────────────────────────────
-_display_module = None
-
-def get_display():
-    global _display_module
-    if _display_module is None:
-        sys.path.insert(0, str(SCRIPTS_DIR))
-        import display as prism_display
-        _display_module = prism_display
-    return _display_module
-
 
 # ── 插件加载 ─────────────────────────────────────────────────────────────────
 from src.screen.plugin_loader import (
@@ -187,226 +167,6 @@ class PresenceTracker:
         return datetime.now(TZ).isoformat()
 
 
-# ── 事件闪屏 ─────────────────────────────────────────────────────────────────
-
-def _read_events_safe() -> list:
-    if not EVENTS_FILE.exists():
-        return []
-    try:
-        import fcntl
-        with open(EVENTS_FILE, "r", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_SH)
-            try:
-                data = json.load(f)
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
-        return data.get("events", [])
-    except Exception as e:
-        log.debug(f"读取事件文件失败: {e}")
-        return []
-
-
-def _write_events_safe(events: list):
-    try:
-        import fcntl
-        EVENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = EVENTS_FILE.with_suffix(".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                json.dump({"events": events}, f, ensure_ascii=False, indent=2)
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
-        tmp.replace(EVENTS_FILE)
-    except Exception as e:
-        log.warning(f"写入事件文件失败: {e}")
-
-
-def _get_pending_events() -> list[dict]:
-    from datetime import datetime as _dt
-    now_iso = _dt.now(TZ)
-    events = _read_events_safe()
-    clean = []
-    pending = []
-    for ev in events:
-        ts_str = ev.get("timestamp", "")
-        ttl = ev.get("ttl", 30)
-        try:
-            ts = _dt.fromisoformat(ts_str)
-            age = (now_iso - ts).total_seconds()
-        except Exception:
-            age = 0
-        if age > ttl:
-            log.debug(f"事件已过期，丢弃: {ev.get('text','')}")
-            continue
-        clean.append(ev)
-        if not ev.get("processed", False):
-            pending.append(ev)
-    if len(clean) != len(events):
-        _write_events_safe(clean)
-    return pending
-
-
-def _mark_event_processed(event: dict):
-    events = _read_events_safe()
-    for ev in events:
-        if (ev.get("text") == event.get("text") and
-                ev.get("timestamp") == event.get("timestamp")):
-            ev["processed"] = True
-    _write_events_safe(events)
-
-
-def _do_flash(display, event: dict, fb_path: str):
-    try:
-        flash_img = display.render_flash_frame(event)
-        from PIL import Image as _PILImage
-        dark_img = _PILImage.new("RGB", (480, 320), (0, 0, 0))
-
-        sequence = [
-            (flash_img, 0.5),
-            (dark_img,  0.2),
-            (flash_img, 0.5),
-            (dark_img,  0.2),
-            (flash_img, 0.5),
-            (dark_img,  0.1),
-        ]
-        for frm, dur in sequence:
-            display.write_to_framebuffer(frm, fb_path)
-            time.sleep(dur)
-        log.info(f"⚡ 事件闪屏完成: [{event.get('type','')}] {event.get('text','')}")
-    except Exception as e:
-        log.error(f"事件闪屏渲染失败: {e}")
-
-
-def check_spi_health() -> bool:
-    try:
-        if not os.path.exists(FB_PATH):
-            return False
-        with open(FB_PATH, 'r+b') as fb:
-            fb.seek(0)
-            fb.write(b'\x00\x00')
-            fb.seek(0)
-        return True
-    except (IOError, OSError) as e:
-        log.warning(f"SPI 健康检查失败: {e}")
-        return False
-
-
-def recover_spi():
-    log.warning("🔧 SPI/fb0 异常检测，记录告警等待人工干预或重启恢复")
-    return False
-
-
-def _display_thread_func(tracker_ref):
-    try:
-        _display_thread_loop(tracker_ref)
-    except Exception as e:
-        import traceback
-        log.error(f"🚨 显示线程致命错误退出: {e}\n{traceback.format_exc()}")
-
-
-def _display_thread_loop(tracker_ref):
-    last_display_time = 0.0
-    last_spi_check = 0.0
-    spi_recover_until = 0.0
-    consecutive_errors = 0
-
-    last_mode = None
-    last_frame = None
-
-    while True:
-        try:
-            now = time.monotonic()
-            # ── 事件闪屏检查 ──
-            try:
-                display = get_display()
-                pending = _get_pending_events()
-                if pending:
-                    ev = pending[0]
-                    log.info(f"⚡ 收到事件: [{ev.get('type','')}] {ev.get('text','')}")
-                    _mark_event_processed(ev)
-                    _do_flash(display, ev, FB_PATH)
-                    last_display_time = 0.0
-                    last_mode = None
-                    last_frame = None
-            except Exception as e:
-                log.error(f"事件闪屏检查异常: {e}")
-
-            # ── 屏幕刷新 ──
-            if now - last_display_time >= DISPLAY_INTERVAL:
-                last_display_time = now
-                try:
-                    display = get_display()
-                    _hour = datetime.now(TZ).hour
-                    _state = display.load_prism_state() if hasattr(display, 'load_prism_state') else {}
-                    _dismissed = _state.get("summary_dismissed", False)
-
-                    tracker = tracker_ref()
-                    is_present = tracker.present if tracker else True
-
-                    if not is_present:
-                        current_mode = "dim"
-                        img = display.render_dim_frame()
-                    elif 18 <= _hour < 20 and not _dismissed:
-                        current_mode = "summary"
-                        img = display.render_summary_frame()
-                    else:
-                        current_mode = "normal"
-                        img = display.render_frame()
-                        if _hour >= 20 and _dismissed:
-                            _state["summary_dismissed"] = False
-                            display.save_prism_state(_state) if hasattr(display, 'save_prism_state') else None
-
-                    # ── 渐变过渡 or 直接写入 ──
-                    if last_mode is not None and current_mode != last_mode and last_frame is not None:
-                        try:
-                            from prism_transition import fade_transition
-                            log.info(f"🎞️ 模式切换 {last_mode} → {current_mode}，执行渐变过渡")
-                            fade_transition(last_frame, img, FB_PATH, steps=8, duration=0.5)
-                        except Exception as te:
-                            log.warning(f"渐变过渡失败，降级直接写入: {te}")
-                            display.write_to_framebuffer(img, FB_PATH)
-                    else:
-                        display.write_to_framebuffer(img, FB_PATH)
-
-                    last_mode = current_mode
-                    last_frame = img
-
-                    consecutive_errors = 0
-                    log.info(f"🖥️ 屏幕已刷新 ({current_mode} 模式)")
-                except FileNotFoundError:
-                    log.warning(f"framebuffer {FB_PATH} 不存在，等待重启恢复")
-                    last_mode = None
-                    last_frame = None
-                except Exception as e:
-                    log.error(f"屏幕渲染/写入异常: {e}")
-
-            # ── SPI 健康检查 ──
-            if now - last_spi_check >= SPI_HEALTH_INTERVAL and now > spi_recover_until:
-                last_spi_check = now
-                if not check_spi_health():
-                    if recover_spi():
-                        spi_recover_until = time.monotonic() + SPI_RECOVER_COOLDOWN
-                        last_display_time = 0
-
-            time.sleep(1)
-        except Exception as e:
-            consecutive_errors += 1
-            import traceback
-            log.error(f"显示线程异常 (连续第{consecutive_errors}次): {e}\n{traceback.format_exc()}")
-            if consecutive_errors >= 20:
-                log.error("🚨 显示线程连续异常过多，退出等待看门狗拉起")
-                return
-            time.sleep(min(5 * consecutive_errors, 30))
-
-
-def _start_display_thread(tracker_weakref):
-    t = threading.Thread(target=_display_thread_func, args=(tracker_weakref,), daemon=True, name="display")
-    t.start()
-    log.info("🖥️ 显示线程已启动（独立于主循环）")
-    return t
-
-
 # ── 主循环 ───────────────────────────────────────────────────────────────────
 
 def _acquire_pidlock() -> bool:
@@ -485,13 +245,12 @@ def main_loop():
     except Exception as e:
         log.warning(f"启动同步设备状态失败: {e}")
 
-    # 2. 启动显示线程
-    import weakref
-    tracker_weakref = weakref.ref(tracker)
-    display_thread = _start_display_thread(tracker_weakref)
-    display_watchdog_interval = 30
-    last_display_watchdog = time.monotonic()
-    display_crash_count = 0
+    # 2. 初始化所有设备插件（spi_screen 会在 on_init 时启动自己的线程）
+    for d in devices:
+        try:
+            d.on_init()
+        except Exception as e:
+            log.warning(f"设备插件 {d.__class__.__name__} 初始化失败: {e}")
 
     # 3. 主循环变量
     last_camera_time = 0.0
@@ -557,16 +316,6 @@ def main_loop():
                 log.debug("天气更新已触发（异步）")
             except Exception as e:
                 log.debug(f"天气更新触发失败（不影响主循环）: {e}")
-
-        # ── 显示线程看门狗 ────────────────────────────────────────────
-        if now - last_display_watchdog >= display_watchdog_interval:
-            last_display_watchdog = now
-            if not display_thread.is_alive():
-                display_crash_count += 1
-                log.warning(f"⚠️ 显示线程已死亡，第 {display_crash_count} 次自动拉起")
-                display_thread = _start_display_thread(tracker_weakref)
-                if display_crash_count >= 10:
-                    log.error(f"🚨 显示线程已崩溃 {display_crash_count} 次，可能存在系统问题")
 
         # ── sleep ─────────────────────────────────────────────────────
         now2 = time.monotonic()

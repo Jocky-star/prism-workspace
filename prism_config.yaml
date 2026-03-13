@@ -52,6 +52,12 @@ detectors:
 
 # ── 执行器（检测结果触发的动作）────────────────────────────────────────────
 devices:
+  - plugin: spi_screen          # SPI 屏幕（内置，没屏幕就去掉这项）
+    enabled: true
+    config:
+      fb_path: "/dev/fb0"
+      display_interval: 10      # 屏幕刷新间隔秒数
+
   - plugin: mijia_lamp          # 米家台灯（内置）
     enabled: true
     config: {}                  # 从 device_preferences.json 自动读取时段偏好
