@@ -130,11 +130,10 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
     """
     Generate action-oriented daily brief.
     
-    The brief should contain:
-    1. deliveries: things already done for the user
-    2. captured_intents: what was captured and acted upon
-    3. prepared: content/drafts ready for the user
-    4. tracking: items being tracked with status
+    核心原则：Brief 只汇报真正做过的事情。
+    - action_log 有记录 → 直接写进 Brief，不需要 LLM 编
+    - action_log 为空 → deliveries/proactive 为空，不编造
+    - LLM 只负责：从录音/对话中提取 captured_intents 和 tracking
     """
     reg = DataSourceRegistry()
     data = reg.get_all_data(date)
@@ -143,28 +142,29 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
     memory_context = _load_memory_context(date)
     todo_context = _load_todo_context()
     profile = _load_user_profile()
+    
+    # 读取行动日志 — Brief 的真实依据
+    try:
+        from src.services.action_log import get_actions, get_actions_summary
+        actions = get_actions(date)
+        action_summary = get_actions_summary(date)
+    except Exception:
+        actions = []
+        action_summary = ""
 
     system_prompt = """你是一个私人助理，给用户做每日汇报。
 
-**你的角色：像一个靠谱的秘书，不是一个技术系统。**
+**最重要的规则：只汇报真正做过的事。没做过的，一个字都不要编。**
+
+你会收到两种数据：
+1. **行动日志（action_log）**：这是已经真正执行过的事情。直接写进 deliveries / proactive。
+2. **多源数据（录音/对话/行为等）**：用来提取 captured_intents 和 tracking。
 
 汇报原则：
-- 不暴露任何技术细节（不提日期、数据源、pipeline、模型、脚本）
-- 不给建议 → 给结果："我已经帮你做了XX"
-- 不说"根据X日的数据分析" → 直接说结果
-- 语气自然，像朋友汇报工作，不像机器生成报告
-- 如果帮用户做了事 → 说清楚做了什么、结果是什么
-- 如果发现用户的习惯/偏好 → 说"根据你的习惯，我做了XX"
-- 如果需要用户决策 → 直接说"这个需要你拍板"
-
-你的能力（可以承诺做到的）：
-- 写文档/方案
-- 搜索信息（网页、票务、天气等）
-- 设置提醒和跟踪
-- 分析数据、生成报告
-- 给同事/朋友拟消息草稿
-- 整理会议要点和行动项
-- 控制智能设备（台灯等）
+- 行动日志里有的 → 如实汇报
+- 行动日志里没有的 → deliveries 和 proactive 留空数组，**绝对不编造**
+- 不暴露技术细节（不提日期、数据源、pipeline、模型、脚本）
+- 语气自然，像朋友汇报工作
 
 输出 JSON：
 {
@@ -172,10 +172,10 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
     {"title": "做了什么", "detail": "具体结果"}
   ],
   "proactive": [
-    {"insight": "我注意到你最近...", "action": "所以我帮你...", "result": "结果/链接（可选）"}
+    {"insight": "我注意到你最近...", "action": "所以我帮你...", "result": "结果（可选）"}
   ],
   "captured_intents": [
-    {"quote": "用户提到的事（简短）", "action_taken": "我做了什么", "status": "done/in_progress/prepared"}
+    {"quote": "用户提到的事（≤30字）", "action_taken": "做了什么/还没做", "status": "done/in_progress/prepared"}
   ],
   "prepared_for_today": [
     {"title": "准备了什么", "content": "可以直接用的内容"}
@@ -183,29 +183,27 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
   "tracking": [
     {"item": "跟踪项", "status": "进展", "next_action": "下一步"}
   ],
-  "status_note": "一句自然的状态观察（可选，没有就空字符串）"
+  "status_note": "一句自然的状态观察（可选，空字符串也行）"
 }
 
-各字段说明：
-- **deliveries**: 明确完成的交付物，要有具体成果
-- **proactive**: ⭐最重要的板块！根据用户最近的兴趣/状态/习惯，你主动洞察到了什么，然后主动做了什么。
-  例如：注意到用户最近聊了旅行 → 帮他查了机票和攻略；注意到运动频率下降 → 查了附近健身课；注意到在研究某个话题 → 整理了相关资料。
-  这个板块体现"我懂你"，不是被动执行命令，而是主动替你想。
-  ⚠️ 每条 proactive 要精简！insight 一句话（20字以内），action 一句话（30字以内），不要写长段分析。最多 3-4 条。
-- **captured_intents**: 用户明确提到/要求的事，quote 控制在 30 字以内
-- **prepared_for_today**: 可以直接拿来用的东西
-- **tracking**: 长线跟踪项
+字段规则：
+- **deliveries**: 只从 action_log 中 category=delivery 的记录生成。没有就空数组。
+- **proactive**: 只从 action_log 中 category=proactive 的记录生成。没有就空数组。每条精简：insight ≤ 20字，action ≤ 30字。
+- **captured_intents**: 从录音/对话中提取用户提到但可能还没被执行的意图。如果 action_log 里有对应的 intent_followup 记录，status 标 done。
+- **prepared_for_today**: 有可以直接用的交付物才写，没有就空数组。
+- **tracking**: 长线事项的进展。
 
-注意：
-- 不要在任何字段里出现日期格式、"数据"、"管线"等技术词汇
-- proactive 要基于真实信号（录音/聊天/行为），不要凭空编造
-- 如果数据不足以产生某个分类，就留空数组，不要编造
+⚠️ 宁可 deliveries 和 proactive 为空，也绝不编造。Brief 的信任感比内容丰富度重要 100 倍。
 """
 
-    user_prompt = f"""日期：{date}
+    # 行动日志是 Brief 的核心依据
+    action_log_text = action_summary if action_summary else "（无行动记录 — deliveries 和 proactive 应为空数组）"
+    
+    user_prompt = f"""=== 行动日志（真正执行过的，如实汇报）===
+{action_log_text}
 
-=== 多源数据 ===
-{data_summary[:8000]}
+=== 多源数据（用于提取 intents 和 tracking）===
+{data_summary[:6000]}
 
 === 当天记忆日志 ===
 {memory_context[:2000]}
@@ -213,7 +211,7 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
 === 当前待办 ===
 {todo_context[:1000]}
 
-请基于以上数据生成行动导向的晨间简报。记住：给结果，不给建议。"""
+生成晨间简报。deliveries 和 proactive 只能基于行动日志，不能编造。"""
 
     if dry_run:
         brief_content = {
