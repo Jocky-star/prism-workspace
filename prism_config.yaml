@@ -6,7 +6,7 @@
 presence:
   absent_timeout: 120           # 连续无人多少秒算离开（2 分钟）
   camera_interval: 30           # 传感器采集间隔（秒）
-  motion_threshold: 0.005       # 帧差阈值（低于此值视为静止）
+  motion_threshold: 0.05        # 帧差阈值（低于 5% 视为静止，不延长计时）
 
 # ── 屏幕 ──────────────────────────────────────────────────────────────────────
 screen:
@@ -33,8 +33,8 @@ detectors:
   - plugin: frame_diff          # 帧差辅助（快速，用于短路 Vision API）
     enabled: true
     config:
-      threshold: 0.005          # 帧差高于此值视为有运动
-      skip_vision_below: 0.005  # 帧差低于此值时 skip=True，跳过后续检测器
+      threshold: 0.05           # 帧差 > 5% 才算有运动
+      skip_vision_below: 0.05  # 帧差 < 5% → 跳过 Vision API
 
   - plugin: vision_api          # LLM Vision（准确，但有 API 成本）
     enabled: true
