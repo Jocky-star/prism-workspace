@@ -266,6 +266,10 @@ ALL_SOURCES.append(CalendarDataSource)
 
 没有硬件也能用——服务系统只需要数据源和 LLM API。
 
+**设备联动（有人/无人触发设备）** 可通过 `prism_config.yaml` 配置，无需修改代码。
+内置米家台灯插件，其他设备（Yeelight、智能插座等）可自行编写插件放入 `src/screen/plugins/`。
+详见 SKILL.md 的"设备联动"章节。
+
 ## 产品文档
 
 - [服务闭环设计](docs/service-loop-design.md)

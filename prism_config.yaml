@@ -1,0 +1,31 @@
+# Prism 配置 — 修改后重启 daemon 生效
+# 所有字段都有默认值，不配也能跑
+
+presence:
+  # 摄像头场景描述（用于 Vision API prompt）
+  scene: "办公桌前"        # 改成你的场景，比如 "客厅沙发" "卧室书桌"
+  absent_timeout: 300       # 几秒算离开（默认 5 分钟）
+  motion_threshold: 0.005   # 帧差阈值（默认 0.5%，越小越灵敏）
+  camera_interval: 30       # 拍照间隔秒数
+
+vision:
+  model: ""                 # 留空则自动从 models.json 读取
+  timeout: 15               # API 超时秒数
+
+screen:
+  display_interval: 10      # 屏幕刷新间隔秒数
+  fb_path: "/dev/fb0"       # framebuffer 设备路径
+
+# 设备联动 — 有人/无人时触发的动作
+# 每个 plugin 对应 src/screen/plugins/ 下的一个 Python 文件
+devices:
+  - plugin: mijia_lamp      # 插件文件名（不含 .py）
+    enabled: true
+    config:                 # 传给插件的配置，每个插件不同
+      # mijia_lamp 不需要额外配置，它从 device_preferences.json 读
+  # 示例：添加更多设备
+  # - plugin: yeelight
+  #   enabled: true
+  #   config:
+  #     ip: "192.168.1.100"
+  #     default_brightness: 80

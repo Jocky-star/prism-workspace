@@ -30,8 +30,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "sources" / "cam
 from lock import camera_lock
 import logging
 
+# ── 配置加载（从 prism_config.yaml 读取，不存在时用默认值）────────────────────
+# 确保包路径可用（允许从任意目录启动 daemon）
+_SCREEN_DIR = Path(__file__).resolve().parent
+_SRC_DIR = _SCREEN_DIR.parent
+if str(_SRC_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR.parent))
+
+from src.screen.config_loader import get_config as _get_prism_config
+_cfg = _get_prism_config()
+
 # ── 路径配置 ────────────────────────────────────────────────────────────────
-WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace"))
+WORKSPACE = _cfg.workspace
 MEMORY_DIR = WORKSPACE / "memory"
 SCRIPTS_DIR = WORKSPACE / "src" / "screen"
 
@@ -41,24 +51,27 @@ PREV_THUMB_FILE = MEMORY_DIR / ".prism_prev_thumb.jpg"
 EVENTS_FILE   = MEMORY_DIR / "prism_events.json"
 LOG_FILE = WORKSPACE / "logs" / "prism_daemon.log"
 
-FB_PATH = "/dev/fb0"
+FB_PATH = _cfg.screen.fb_path
 
 TZ = timezone(timedelta(hours=8))
 
-# ── 检测参数 ─────────────────────────────────────────────────────────────────
-MOTION_THRESHOLD = 0.05      # 帧差比例阈值（5% 像素变化 = 有运动）
-ABSENT_TIMEOUT = 300         # 连续 5 分钟无检测 = 离开
-CAMERA_INTERVAL = 30         # 拍照间隔（秒）
-DISPLAY_INTERVAL = 10        # 屏幕刷新间隔（秒）
+# ── 检测参数（从配置读取）────────────────────────────────────────────────────
+MOTION_THRESHOLD = _cfg.presence.motion_threshold  # 帧差比例阈值
+ABSENT_TIMEOUT   = _cfg.presence.absent_timeout    # 连续无检测多少秒 = 离开
+CAMERA_INTERVAL  = _cfg.presence.camera_interval   # 拍照间隔（秒）
+DISPLAY_INTERVAL = _cfg.screen.display_interval    # 屏幕刷新间隔（秒）
 THUMB_W, THUMB_H = 160, 120  # 缩略图大小（帧差用）
 
 # SPI 自动恢复参数
 SPI_HEALTH_INTERVAL = 120    # 每 120 秒检查一次 SPI 健康
 SPI_RECOVER_COOLDOWN = 300   # 恢复后冷却 5 分钟再检查
 
-# Vision API 检测参数
-VISION_API_MODEL = "pa/claude-haiku-4-5-20251001"
-VISION_API_TIMEOUT = 15      # API 超时秒数
+# Vision API 检测参数（从配置读取，空则后续懒加载时从 models.json 自动选）
+VISION_API_MODEL = _cfg.vision.model  # 空字符串 = 自动检测
+VISION_API_TIMEOUT = _cfg.vision.timeout  # API 超时秒数
+
+# presence 场景描述（用于 Vision prompt）
+PRESENCE_SCENE = _cfg.presence.scene
 
 # ── 日志 ─────────────────────────────────────────────────────────────────────
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -85,30 +98,21 @@ def get_display():
     return _display_module
 
 
-# ── 懒加载米家联动模块 ────────────────────────────────────────────────────────
-_mijia_module = None
-
-def _get_mijia():
-    global _mijia_module
-    if _mijia_module is None:
-        try:
-            if str(SCRIPTS_DIR) not in sys.path:
-                sys.path.insert(0, str(SCRIPTS_DIR))
-            import mijia as prism_mijia
-            _mijia_module = prism_mijia
-        except Exception as e:
-            log.warning(f"米家模块加载失败: {e}")
-    return _mijia_module
+# ── 设备插件联动（通过 plugin_loader 触发，不直接 import 米家）─────────────────
+from src.screen.plugin_loader import trigger_present as _plugin_trigger_present
+from src.screen.plugin_loader import trigger_absent as _plugin_trigger_absent
 
 
 def _trigger_presence_change(present: bool):
-    """安全触发米家存在联动，失败静默"""
+    """触发所有设备插件的存在状态联动"""
     try:
-        mijia = _get_mijia()
-        if mijia:
-            mijia.on_presence_change(present)
+        if present:
+            hour = datetime.now(TZ).hour
+            _plugin_trigger_present(hour)
+        else:
+            _plugin_trigger_absent()
     except Exception as e:
-        log.warning(f"米家联动异常: {e}")
+        log.warning(f"设备插件联动异常: {e}")
 
 
 # ── Vision API 人体检测器 ─────────────────────────────────────────────────
@@ -116,7 +120,7 @@ _vision_api_config = None
 
 
 def _get_vision_api_config() -> dict:
-    """从 models.json 懒加载 API 配置"""
+    """从 models.json 懒加载 API 配置，并自动选择模型（若配置为空）"""
     global _vision_api_config
     if _vision_api_config is None:
         try:
@@ -134,6 +138,14 @@ def _get_vision_api_config() -> dict:
             log.error(f"Vision API 配置加载失败: {e}")
             _vision_api_config = {}
     return _vision_api_config
+
+
+def _resolve_vision_model() -> str:
+    """解析 Vision API 使用的模型名。配置为空时自动回退到默认 haiku 模型。"""
+    if VISION_API_MODEL:
+        return VISION_API_MODEL
+    # 默认回退（与原始硬编码保持一致）
+    return "pa/claude-haiku-4-5-20251001"
 
 
 def detect_person_vision(img) -> tuple[bool, str]:
@@ -168,13 +180,13 @@ def detect_person_vision(img) -> tuple[bool, str]:
         }
 
         payload = {
-            "model": VISION_API_MODEL,
+            "model": _resolve_vision_model(),
             "max_tokens": 20,
             "messages": [{
                 "role": "user",
                 "content": [
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-                    {"type": "text", "text": "Is there a real, living person currently sitting at or standing near the desk in this image? Look for visible skin (face, hands, arms). Clothes on a chair, bags, or other objects do NOT count. Reply ONLY 'yes' or 'no'."},
+                    {"type": "text", "text": f"Is there a real, living person currently at or near the {PRESENCE_SCENE} in this image? Look for visible skin (face, hands, arms). Clothes on a chair, bags, or other objects do NOT count. Reply ONLY 'yes' or 'no'."},
                 ],
             }],
         }

@@ -147,6 +147,57 @@ echo '{"current_task": "我的任务", "auto_inferred": false}' > memory/prism_s
 
 详细协议见 [STATE_PROTOCOL.md](src/screen/STATE_PROTOCOL.md)。
 
+### 设备联动（presence → 设备控制）
+
+设备联动通过 `prism_config.yaml`（workspace 根目录）配置，**无需修改 daemon.py**：
+
+```yaml
+# prism_config.yaml
+presence:
+  scene: "客厅沙发"          # 摄像头朝向的场景，用于 Vision API
+  absent_timeout: 300        # 多少秒没检测到人算离开
+
+devices:
+  - plugin: mijia_lamp       # 内置米家台灯插件
+    enabled: true
+  # 添加更多设备：
+  # - plugin: yeelight
+  #   enabled: true
+  #   config:
+  #     ip: "192.168.1.100"
+```
+
+**写一个新设备插件**（三步）：
+
+1. 在 `src/screen/plugins/` 下创建 `your_device.py`：
+
+```python
+from src.screen.plugins import PrismDevicePlugin
+
+class Plugin(PrismDevicePlugin):
+    def on_present(self, hour: int):
+        # 有人来了，开灯/开空调...
+        pass
+    
+    def on_absent(self):
+        # 人走了，关灯/关空调...
+        pass
+```
+
+2. 在 `prism_config.yaml` 的 `devices` 里注册：
+
+```yaml
+devices:
+  - plugin: your_device
+    enabled: true
+    config:
+      any_param: value
+```
+
+3. 重启 daemon 生效。
+
+示例见 `src/screen/plugins/example_plugin.py`。
+
 ### 米家台灯
 
 ```bash
