@@ -122,6 +122,8 @@ python3 src/intelligence/bootstrap.py
 
 ### Prism 屏幕（需树莓派 + SPI 屏幕）
 
+屏幕是一个 **device 插件**（`spi_screen.py`），和台灯平等。不需要屏幕的用户在 `prism_config.yaml` 里不配 `spi_screen` 就行，daemon 不会报错。
+
 **默认零配置**：启动 daemon 后，屏幕会自动监听 OpenClaw gateway 的 session 活动，推断并显示当前状态。不需要手动调用任何命令。
 
 **想手动控制？** 手动设置后 5 分钟内不会被自动推断覆盖：
@@ -147,56 +149,109 @@ echo '{"current_task": "我的任务", "auto_inferred": false}' > memory/prism_s
 
 详细协议见 [STATE_PROTOCOL.md](src/screen/STATE_PROTOCOL.md)。
 
-### 设备联动（presence → 设备控制）
+### 存在检测 + 设备联动（全插件化）
 
-设备联动通过 `prism_config.yaml`（workspace 根目录）配置，**无需修改 daemon.py**：
+daemon 是**纯调度器**，不知道有什么摄像头、什么检测算法、什么设备。三层管线全部通过 `prism_config.yaml` 配置：
 
 ```yaml
-# prism_config.yaml
-presence:
-  scene: "客厅沙发"          # 摄像头朝向的场景，用于 Vision API
-  absent_timeout: 300        # 多少秒没检测到人算离开
+# prism_config.yaml — 三层管线配置
 
-devices:
-  - plugin: mijia_lamp       # 内置米家台灯插件
+# 感知层：怎么拍照
+sensors:
+  - plugin: rpicam           # 内置：树莓派摄像头
     enabled: true
-  # 添加更多设备：
-  # - plugin: yeelight
-  #   enabled: true
-  #   config:
-  #     ip: "192.168.1.100"
+    config:
+      rotation: 180          # 摄像头旋转角度
+      width: 640
+      height: 480
+  # - plugin: usb_camera     # 换 USB 摄像头？写个插件注册就行
+
+# 检测层：怎么判断有没有人
+detectors:
+  - plugin: frame_diff       # 内置：帧差预筛（零成本，毫秒级）
+    enabled: true
+    config:
+      threshold: 0.005
+      skip_vision_below: 0.005  # 帧差极低时跳过 Vision API
+  - plugin: vision_api       # 内置：LLM Vision 检测（准但贵）
+    enabled: true
+    config:
+      scene: "办公桌前"       # 改成你的场景描述
+  # - plugin: local_yolo     # 不想花 API 钱？写个本地检测器
+
+# 执行层：检测到人/没人后做什么
+devices:
+  - plugin: spi_screen       # 内置：SPI 屏幕（有人显示状态板，无人暗屏）
+    enabled: true
+    config:
+      fb_path: "/dev/fb0"
+      display_interval: 10
+  - plugin: mijia_lamp       # 内置：米家台灯（有人开灯，无人关灯）
+    enabled: true
+  # - plugin: homeassistant  # 用 HA 的？写个插件
+  # - plugin: yeelight       # Yeelight 台灯？写个插件
+
+# 存在判定参数
+presence:
+  scene: "办公桌前"
+  absent_timeout: 300        # 5 分钟没检测到人算离开
+  camera_interval: 30        # 每 30 秒检测一次
 ```
 
-**写一个新设备插件**（三步）：
+**没有摄像头？** 去掉 sensors 和 detectors，只保留 devices — 屏幕照常显示。
+**没有屏幕？** devices 里不配 spi_screen 就行。
+**没有台灯？** 不配 mijia_lamp 就行。
+**什么硬件都没有？** 不需要 prism_config.yaml，只用服务系统就行。
 
-1. 在 `src/screen/plugins/` 下创建 `your_device.py`：
+#### 写新的感知插件（Sensor）
 
 ```python
-from src.screen.plugins import PrismDevicePlugin
+# src/screen/plugins/sensors/your_camera.py
+from .. import SensorPlugin
 
-class Plugin(PrismDevicePlugin):
+class Plugin(SensorPlugin):
+    def capture(self) -> "PIL.Image.Image | None":
+        # 拍一张照片，返回 PIL Image
+        pass
+```
+
+配置注册 → 重启 daemon 生效。
+
+#### 写新的检测插件（Detector）
+
+```python
+# src/screen/plugins/detectors/your_detector.py
+from .. import DetectorPlugin
+
+class Plugin(DetectorPlugin):
+    def detect(self, image, context: dict) -> dict:
+        # 输入图片，返回 {"detected": bool, "confidence": float, "skip": bool}
+        pass
+```
+
+检测器按配置顺序执行。上一个返回 `skip=True` 时后续检测器跳过。
+
+#### 写新的执行插件（Device）
+
+```python
+# src/screen/plugins/devices/your_device.py
+from .. import DevicePlugin
+
+class Plugin(DevicePlugin):
+    def on_init(self):
+        # daemon 启动时调用（可选，屏幕在这里启动显示线程）
+        pass
+    
     def on_present(self, hour: int):
-        # 有人来了，开灯/开空调...
+        # 有人来了
         pass
     
     def on_absent(self):
-        # 人走了，关灯/关空调...
+        # 人走了
         pass
 ```
 
-2. 在 `prism_config.yaml` 的 `devices` 里注册：
-
-```yaml
-devices:
-  - plugin: your_device
-    enabled: true
-    config:
-      any_param: value
-```
-
-3. 重启 daemon 生效。
-
-示例见 `src/screen/plugins/example_plugin.py`。
+配置注册 → 重启 daemon 生效。示例见 `src/screen/plugins/` 目录。
 
 ### 米家台灯
 

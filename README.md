@@ -209,10 +209,21 @@ src/
 │   ├── monitoring/              #    监控（新闻/股票等）
 │   └── integrations/            #    外部设备（米家台灯）
 │
-├── screen/                      # 📺 Prism 屏幕（可选，需树莓派）
-│   ├── daemon.py                #    主 daemon
+├── screen/                      # 📺 Prism 屏幕 + 设备联动（可选，需树莓派）
+│   ├── daemon.py                #    纯调度器（不含任何具体实现）
 │   ├── display.py               #    渲染引擎
-│   └── ...
+│   ├── config_loader.py         #    配置加载器
+│   ├── plugin_loader.py         #    三层插件加载器
+│   └── plugins/
+│       ├── __init__.py          #    基类定义（SensorPlugin/DetectorPlugin/DevicePlugin）
+│       ├── sensors/
+│       │   └── rpicam.py        #    内置：树莓派摄像头
+│       ├── detectors/
+│       │   ├── frame_diff.py    #    内置：帧差运动检测（零成本）
+│       │   └── vision_api.py    #    内置：LLM Vision 检测
+│       └── devices/
+│           ├── spi_screen.py    #    内置：SPI 屏幕显示
+│           └── mijia_lamp.py    #    内置：米家台灯
 │
 └── infra/                       # ⚙️ 基础设施
     └── ...
@@ -245,6 +256,38 @@ ALL_SOURCES.append(CalendarDataSource)
 
 详见 [src/services/README.md](src/services/README.md)。
 
+### 新增硬件插件
+
+在 `src/screen/plugins/` 对应目录下新建文件，继承对应基类：
+
+```python
+# 新增 Sensor 示例（src/screen/plugins/sensors/my_sensor.py）
+from src.screen.plugins import SensorPlugin
+
+class MySensorPlugin(SensorPlugin):
+    name = "my_sensor"
+    
+    def capture(self) -> bytes:
+        # 返回图像 bytes
+        ...
+```
+
+```python
+# 新增 Device 示例（src/screen/plugins/devices/my_device.py）
+from src.screen.plugins import DevicePlugin
+
+class MyDevicePlugin(DevicePlugin):
+    name = "my_device"
+    
+    def on_presence_change(self, present: bool):
+        # 有人/无人时触发
+        ...
+```
+
+然后在 `prism_config.yaml` 的对应层（`sensors` / `detectors` / `devices`）中声明插件名即可启用。
+
+详见 SKILL.md 的"设备联动"章节。
+
 ## 设计理念
 
 1. **不给建议，给结果** — 不是"你可能需要做XX"，而是"我已经帮你做了XX"
@@ -264,10 +307,51 @@ ALL_SOURCES.append(CalendarDataSource)
 | 屏幕 | MHS35 3.5" SPI (ili9486) | 480×320 状态显示 |
 | 摄像头 | IMX708 | 存在检测 + 视觉识别 |
 
-没有硬件也能用——服务系统只需要数据源和 LLM API。
+**没有硬件也能用**——服务系统只需要数据源和 LLM API，屏幕和摄像头都是可选的。
 
-**设备联动（有人/无人触发设备）** 可通过 `prism_config.yaml` 配置，无需修改代码。
-内置米家台灯插件，其他设备（Yeelight、智能插座等）可自行编写插件放入 `src/screen/plugins/`。
+### 三层全插件化架构
+
+`src/screen/` 下的 daemon 是**纯调度器**，不含任何硬件代码。硬件能力由三层插件提供：
+
+| 层 | 职责 | 内置插件 |
+|----|------|---------|
+| Sensor（感知） | 采集原始数据（拍照等） | `rpicam`（树莓派摄像头）|
+| Detector（检测） | 分析数据（是否有人等） | `frame_diff`（帧差）、`vision_api`（LLM 识别）|
+| Device（执行） | 驱动设备响应检测结果 | `spi_screen`（SPI 屏幕）、`mijia_lamp`（米家台灯）|
+
+三层都是**可替换、可扩展**的。只用服务系统、不接屏幕？不配 `spi_screen` 就行。
+
+### prism_config.yaml 核心结构
+
+```yaml
+# 三层管线：感知 → 检测 → 执行
+sensors:
+  - plugin: rpicam
+    enabled: true
+    config:
+      rotation: 180
+      width: 640
+      height: 480
+
+detectors:
+  - plugin: frame_diff
+    enabled: true
+  - plugin: vision_api
+    enabled: true
+    config:
+      scene: "办公桌前"
+
+devices:
+  - plugin: spi_screen
+    enabled: true
+    config:
+      fb_path: "/dev/fb0"
+      display_interval: 10
+  - plugin: mijia_lamp
+    enabled: true
+```
+
+不配 `sensors` / `detectors` / 某个 `device`，对应功能就不启用——不会报错，不影响其他模块。
 详见 SKILL.md 的"设备联动"章节。
 
 ## 产品文档

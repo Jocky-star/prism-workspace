@@ -16,8 +16,8 @@
 天气 (weather.json)   ──┤                        ├─ emotion_care   ──→ Feishu 关怀消息
 记忆 (YYYY-MM-DD.md)  ──┘                        └─ social_insight ──→ Feishu 周报
                                                                               ↓
-                                                   intent_tracker ──→ device_preferences ──→ 台灯控制
-                                                  (对话中提取意图)    (device_preferences.py)  (mijia_lamp)
+                                                   intent_tracker ──→ device_preferences ──→ device 插件（台灯/屏幕等）
+                                                  (对话中提取意图)    (device_preferences.py)  (prism_config.yaml 配置)
 ```
 
 Pipeline 调度（`pipeline.py`）：
@@ -237,6 +237,9 @@ python3 src/services/generators/social_insight.py --date 2026-03-12 --dry-run
 
 ### 台灯偏好系统
 
+台灯通过 `src/screen/plugins/devices/mijia_lamp.py`（device 插件）驱动，
+由 `prism_config.yaml` 中的 `devices` 配置启用。
+
 **工作流程**：
 ```
 用户对话："晚上8点后不要开灯了"
@@ -247,7 +250,7 @@ device_preferences.add_lamp_rule(hours=[20,21,22,23], scene="off")
     ↓
 determine_scene() 读取规则覆盖默认逻辑
     ↓
-台灯自动在20点后保持关闭
+台灯 device 插件在20点后保持关闭
 ```
 
 **查看当前规则**：
