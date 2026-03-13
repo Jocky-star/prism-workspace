@@ -144,43 +144,49 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
     todo_context = _load_todo_context()
     profile = _load_user_profile()
 
-    system_prompt = """你是星星，用户饭团的私人AI助理。你在生成晨间简报。
+    system_prompt = """你是一个私人助理，给用户做每日汇报。
 
-核心原则：**不给建议，给结果**。
-- 不说"建议你去做XX" → 说"我已经帮你做了XX"或"我准备了XX给你"
-- 不说"你可能需要关注" → 说"这个事情的进展是..."
-- 不说"记得去做" → 说"我已经设了提醒"或"我帮你拟好了"
+**你的角色：像一个靠谱的秘书，不是一个技术系统。**
+
+汇报原则：
+- 不暴露任何技术细节（不提日期、数据源、pipeline、模型、脚本）
+- 不给建议 → 给结果："我已经帮你做了XX"
+- 不说"根据X日的数据分析" → 直接说结果
+- 语气自然，像朋友汇报工作，不像机器生成报告
+- 如果帮用户做了事 → 说清楚做了什么、结果是什么
+- 如果发现用户的习惯/偏好 → 说"根据你的习惯，我做了XX"
+- 如果需要用户决策 → 直接说"这个需要你拍板"
 
 你的能力（可以承诺做到的）：
-- 写文档/方案（飞书文档）
+- 写文档/方案
 - 搜索信息（网页、票务、天气等）
 - 设置提醒和跟踪
 - 分析数据、生成报告
 - 给同事/朋友拟消息草稿
 - 整理会议要点和行动项
+- 控制智能设备（台灯等）
 
 输出 JSON：
 {
   "deliveries": [
-    {"title": "做了什么", "detail": "具体结果/链接", "source": "基于什么数据"}
+    {"title": "做了什么", "detail": "具体结果"}
   ],
   "captured_intents": [
-    {"quote": "用户原话", "action_taken": "我做了什么", "status": "done/in_progress/prepared"}
+    {"quote": "用户提到的事（简短）", "action_taken": "我做了什么", "status": "done/in_progress/prepared"}
   ],
   "prepared_for_today": [
-    {"title": "准备了什么", "content": "具体内容（消息草稿/方案/数据等）"}
+    {"title": "准备了什么", "content": "可以直接用的内容"}
   ],
   "tracking": [
-    {"item": "跟踪项", "status": "进展", "next_action": "下一步我会做什么"}
+    {"item": "跟踪项", "status": "进展", "next_action": "下一步"}
   ],
-  "status_note": "一句基于摄像头/录音的状态观察（自然、不刻意）"
+  "status_note": "一句自然的状态观察（可选，没有就空字符串）"
 }
 
 注意：
 - deliveries 要有具体成果，不是"我帮你总结了"而是把总结内容写出来
-- captured_intents 里的 action_taken 要么是已完成的，要么是"我正在做"
-- prepared_for_today 里要有可以直接用的内容（比如拟好的消息、查好的信息）
-- tracking 是正在跟进的长线事项
+- 不要在任何字段里出现"YYYY-MM-DD"格式的日期、"数据"、"管线"等技术词汇
+- captured_intents 的 quote 控制在 30 字以内
 - 如果数据不足以产生某个分类，就留空数组，不要编造
 """
 
@@ -252,54 +258,70 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
 
 
 def format_brief_message(brief: Dict[str, Any]) -> str:
-    """Format brief into a readable message for Feishu."""
+    """Format brief into a natural, human-friendly message.
+    
+    不要暴露技术细节（日期、数据源、pipeline），像秘书一样汇报：
+    - 我帮你做了什么
+    - 根据你的习惯/偏好我做了什么
+    - 需要你拍板的事
+    """
     b = brief.get("brief", {})
     parts: List[str] = []
-    date = brief.get("date", "")
-    
-    parts.append(f"☀️ 晨间 Brief | {date}\n")
 
-    # Deliveries
+    parts.append("☀️ 早上好\n")
+
+    # Deliveries — 我帮你做了什么
     deliveries = b.get("deliveries", [])
     if deliveries:
-        parts.append("**昨天帮你推进了这些事**\n")
+        parts.append("**最近帮你搞定了这些**\n")
         for d in deliveries:
-            parts.append(f"📌 {d['title']}")
+            parts.append(f"📌 **{d['title']}**")
             if d.get("detail"):
-                parts.append(f"→ {d['detail']}")
+                parts.append(f"  {d['detail']}")
             parts.append("")
 
-    # Captured intents
+    # Captured intents — 你提到的我记住了
     intents = b.get("captured_intents", [])
     if intents:
-        parts.append("**你说的这些我记住并行动了**\n")
+        parts.append("**你提到的这些我都跟进了**\n")
         for i in intents:
             status_icon = {"done": "✅", "in_progress": "🔄", "prepared": "📋"}.get(i.get("status"), "📝")
-            parts.append(f"{status_icon} \"{i.get('quote', '')}\"")
+            quote = i.get("quote", "")
+            # 截短引用，不要太长
+            if len(quote) > 40:
+                quote = quote[:37] + "..."
+            parts.append(f'{status_icon} "{quote}"')
             parts.append(f"   → {i.get('action_taken', '')}")
             parts.append("")
 
-    # Prepared
+    # Prepared — 根据你的情况准备好的
     prepared = b.get("prepared_for_today", [])
     if prepared:
-        parts.append("**今天可以直接用的**\n")
+        parts.append("**根据你的情况提前准备了**\n")
         for p in prepared:
-            parts.append(f"📎 {p['title']}")
+            parts.append(f"📎 **{p['title']}**")
             if p.get("content"):
-                parts.append(f"   {p['content']}")
+                # 截取前 200 字，避免太长
+                content = p["content"]
+                if len(content) > 200:
+                    content = content[:197] + "..."
+                parts.append(f"  {content}")
             parts.append("")
 
-    # Tracking
+    # Tracking — 需要你关注/拍板的
     tracking = b.get("tracking", [])
     if tracking:
-        parts.append("**正在跟踪**\n")
+        parts.append("**需要你关注的**\n")
         for t in tracking:
-            parts.append(f"🔄 {t['item']} — {t.get('status', '...')}")
+            parts.append(f"🔄 **{t['item']}**")
+            status = t.get("status", "")
+            if status:
+                parts.append(f"  {status}")
             if t.get("next_action"):
-                parts.append(f"   下一步: {t['next_action']}")
+                parts.append(f"  👉 {t['next_action']}")
             parts.append("")
 
-    # Status note
+    # Status note — 补充观察
     note = b.get("status_note", "")
     if note:
         parts.append(f"💭 {note}")
