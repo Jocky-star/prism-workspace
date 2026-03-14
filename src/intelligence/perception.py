@@ -28,7 +28,13 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 TZ = timezone(timedelta(hours=8))
-WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace"))
+WORKSPACE = Path(os.environ.get(
+    "WORKSPACE",
+    os.environ.get(
+        "OPENCLAW_WORKSPACE",
+        os.path.expanduser("~/.openclaw/workspace")
+    )
+))
 DATA_DIR = WORKSPACE / "data" / "daily-reports"
 INTEL_DIR = WORKSPACE / "memory" / "intelligence"
 MODELS_JSON = Path(os.path.expanduser("~/.openclaw/agents/main/agent/models.json"))

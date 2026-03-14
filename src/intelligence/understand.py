@@ -23,7 +23,13 @@ from pathlib import Path
 from statistics import median
 
 TZ = timezone(timedelta(hours=8))
-WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace"))
+WORKSPACE = Path(os.environ.get(
+    "WORKSPACE",
+    os.environ.get(
+        "OPENCLAW_WORKSPACE",
+        os.path.expanduser("~/.openclaw/workspace")
+    )
+))
 INTEL_DIR = WORKSPACE / "memory" / "intelligence"
 
 ENTITIES_FILE = INTEL_DIR / "entities.json"

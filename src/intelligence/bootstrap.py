@@ -18,8 +18,14 @@ from datetime import datetime
 from pathlib import Path
 
 # ─── 路径配置 ──────────────────────────────────────────────
-BASE = Path(os.path.expanduser("~/.openclaw/workspace"))
-SCRIPTS = BASE / "scripts"
+BASE = Path(os.environ.get(
+    "WORKSPACE",
+    os.environ.get(
+        "OPENCLAW_WORKSPACE",
+        os.path.expanduser("~/.openclaw/workspace")
+    )
+))
+SRC = BASE / "src"
 INTELLIGENCE = BASE / "memory" / "intelligence"
 LOGS = BASE / "logs"
 
