@@ -28,6 +28,39 @@ cp config.example.yaml config.yaml
 python3 main.py status  # 验证配置
 ```
 
+## 进阶配置
+
+基础配置完成后，按需开启更多功能：
+
+### 📡 数据源
+
+| 数据源 | 配置项 | 说明 |
+|--------|--------|------|
+| 录音转写 | `sources.audio.*` | 需要转写服务 API |
+| 对话记录 | 自动 | 从 OpenClaw memory/ 读取 |
+| 股票监控 | `sources.stock.*` | A股实时行情 |
+
+### 🧠 定时任务
+
+```bash
+# 让你的 Agent 执行
+python3 main.py cron-setup
+```
+
+自动设置录音拉取 / 每日管线 / 服务管线 / 晨间推送 / 周精炼，无需手动编辑 crontab。
+
+### 🔌 硬件扩展
+
+| 功能 | 配置项 | 需要 |
+|------|--------|------|
+| 摄像头 | `features.camera.*` | 树莓派 + 摄像头模块 |
+| 米家家居 | `features.mijia.*` | 米家账号 |
+| 状态屏 | `features.screen.*` | MHS35 SPI 屏 |
+
+> 查看完整配置引导：`python3 main.py guide`
+
+---
+
 ## 配置说明
 
 Prism 需要两项基础配置：

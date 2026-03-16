@@ -25,6 +25,33 @@ python3 main.py status
 python3 main.py brief --dry-run
 ```
 
+## 进阶配置
+
+基础 Brief 跑通后，引导用户配置更多功能：
+
+### 数据源
+
+```bash
+# 查看配置引导
+python3 main.py guide
+```
+
+引导用户提供：
+- 录音转写 API 地址和 Key（如有）
+- 股票关注列表（如需）
+- 摄像头/米家/屏幕 等硬件配置（如有）
+
+### 定时任务
+
+```bash
+python3 main.py cron-setup
+```
+
+自动设置所有定时任务，无需手动编辑 crontab。
+幂等操作，重复运行不会重复添加。
+
+---
+
 ## 什么时候使用（已安装后）
 
 - 需要生成用户的晨间简报、会议洞察、意图追踪

@@ -233,6 +233,169 @@ print(format_brief_message(result))
     os.execvp(args[0], args)
 
 
+# ── 配置引导 (guide) ──────────────────────────────────────
+
+def cmd_guide():
+    """输出分阶段配置引导，帮助用户配置数据源、管线和硬件扩展。"""
+    print("""
+🌟 Prism 配置引导
+
+你已完成基础配置。以下是进阶配置：
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📡 第一步：数据源
+
+目前支持以下数据源，按需开启：
+
+  1. 录音数据（推荐）
+     在 config.yaml 中设置：
+     sources.audio.enabled: true
+     sources.audio.api_url: "你的转写服务地址"
+     sources.audio.api_key: "你的 API Key"
+
+  2. 对话记录（自动）
+     从 OpenClaw memory/ 目录自动读取，无需配置
+
+  3. 股票监控
+     sources.stock.enabled: true
+     sources.stock.watchlist: ["600519", "000858"]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🧠 第二步：智能管线
+
+配置完数据源后，需要设置定时任务让管线自动运行。
+让你的 Agent 执行：
+
+  python3 main.py cron-setup
+
+这会自动创建以下 cron 任务：
+  • 22:45 — 拉取录音数据
+  • 23:10 — 每日智能管线（感知→理解→摘要）
+  • 23:20 — 服务管线（Brief 生成）
+  • 08:30 — 晨间 Brief 推送
+  • 周日 20:00 — 周精炼
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔌 第三步：硬件扩展（可选）
+
+  1. 摄像头感知
+     features.camera.enabled: true
+     features.camera.rotation: 180  # 如果物理倒置
+
+  2. 米家智能家居
+     features.mijia.enabled: true
+     features.mijia.username: "手机号"
+     features.mijia.password: "密码"
+
+  3. SPI 屏幕（Prism 显示屏）
+     features.screen.enabled: true
+     需要：树莓派 + MHS35 3.5寸 SPI 屏
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ 配置完毕后运行 python3 main.py status 验证
+""")
+
+
+# ── 定时任务设置 (cron-setup) ─────────────────────────────
+
+def cmd_cron_setup():
+    """自动写入 crontab，幂等操作（重复运行不会重复添加）。"""
+    import subprocess
+
+    python = sys.executable
+    workspace = str(WORKSPACE)
+
+    # 每条 cron 任务定义：(标记, 时间表达式, 命令, 描述)
+    cron_entries = [
+        (
+            "prism:audio-fetch",
+            "45 22 * * *",
+            f"cd {workspace} && {python} src/sources/audio/fetch.py",
+            "录音数据拉取",
+        ),
+        (
+            "prism:daily-pipeline",
+            "10 23 * * *",
+            f"cd {workspace} && {python} src/intelligence/perception.py && {python} src/intelligence/understand.py && {python} src/intelligence/daily_digest.py",
+            "每日智能管线",
+        ),
+        (
+            "prism:service-pipeline",
+            "20 23 * * *",
+            f"cd {workspace} && {python} src/services/pipeline.py",
+            "服务管线",
+        ),
+        (
+            "prism:morning-push",
+            "30 8 * * *",
+            f"cd {workspace} && {python} main.py brief",
+            "晨间 Brief 推送",
+        ),
+        (
+            "prism:weekly-refine",
+            "0 20 * * 0",
+            f"cd {workspace} && {python} src/intelligence/weekly_refine.py",
+            "周精炼",
+        ),
+    ]
+
+    print("\n📅 设置定时任务...\n")
+
+    # 读取现有 crontab
+    try:
+        result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+        existing = result.stdout if result.returncode == 0 else ""
+    except FileNotFoundError:
+        print("❌ 未找到 crontab 命令，请确认系统已安装 cron。")
+        sys.exit(1)
+
+    # 删除旧的 prism: 标记行（幂等）
+    lines = [line for line in existing.splitlines() if "# prism:" not in line]
+    # 去掉尾部多余空行
+    while lines and not lines[-1].strip():
+        lines.pop()
+
+    # 追加新条目
+    if lines:
+        lines.append("")  # 空行分隔
+    for tag, schedule, command, _ in cron_entries:
+        lines.append(f"{schedule} {command}  # {tag}")
+
+    new_crontab = "\n".join(lines) + "\n"
+
+    # 写入 crontab
+    proc = subprocess.run(["crontab", "-"], input=new_crontab, text=True, capture_output=True)
+    if proc.returncode != 0:
+        print(f"❌ 写入 crontab 失败：{proc.stderr}")
+        sys.exit(1)
+
+    # 输出结果
+    print("已添加：")
+    labels = {
+        "prism:audio-fetch":     "22:45 — 录音数据拉取",
+        "prism:daily-pipeline":  "23:10 — 每日智能管线",
+        "prism:service-pipeline":"23:20 — 服务管线",
+        "prism:morning-push":    "08:30 — 晨间 Brief 推送",
+        "prism:weekly-refine":   "周日 20:00 — 周精炼",
+    }
+    for tag, _, _, _ in cron_entries:
+        print(f"  ✅ {labels[tag]}")
+
+    # 验证写入结果
+    verify = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    prism_lines = [l for l in verify.stdout.splitlines() if "# prism:" in l]
+    if prism_lines:
+        print("\n当前 crontab（Prism 条目）：")
+        for line in prism_lines:
+            print(f"  {line}")
+
+    print("\n修改时间？编辑 config.yaml 的 schedule 段，然后重新运行 python3 main.py cron-setup\n")
+
+
 # ── 主入口 ────────────────────────────────────────────────
 
 def main():
@@ -243,16 +406,21 @@ def main():
 子命令：
   setup              初始化配置文件
   status             查看系统状态
+  guide              分阶段配置引导（数据源/管线/硬件）
+  cron-setup         自动设置所有定时任务
   brief              生成并推送 Brief
   brief --dry-run    预览 Brief（不推送）
 
 首次使用？运行 python3 main.py setup
+完成基础配置后运行 python3 main.py guide 查看进阶配置
 """,
     )
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("setup", help="初始化配置文件")
     sub.add_parser("status", help="查看系统状态")
+    sub.add_parser("guide", help="分阶段配置引导（数据源/管线/硬件）")
+    sub.add_parser("cron-setup", help="自动设置所有定时任务")
 
     brief_p = sub.add_parser("brief", help="生成并推送 Brief")
     brief_p.add_argument("--dry-run", action="store_true", help="预览不推送")
@@ -264,6 +432,10 @@ def main():
         cmd_setup()
     elif args.command == "status":
         cmd_status()
+    elif args.command == "guide":
+        cmd_guide()
+    elif args.command == "cron-setup":
+        cmd_cron_setup()
     elif args.command == "brief":
         cmd_brief(dry_run=args.dry_run, date=args.date)
     elif args.command is None:
