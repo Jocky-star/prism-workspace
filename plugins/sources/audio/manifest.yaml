@@ -1,0 +1,52 @@
+id: audio
+name: audio
+type: source
+version: 1.0.0
+description: 录音转写数据源 — 拉取用户当天的录音转写文本，提取场景、情绪、关键引语
+
+# 配置项
+config:
+  api_url:
+    required: true
+    default: ""
+    description: "录音转写服务地址，如 https://gemini-audio.example.com/api"
+  api_key:
+    required: true
+    default: ""
+    description: "转写服务 API Key"
+  timeout:
+    required: false
+    default: 30
+    description: "请求超时秒数"
+
+# 输出字段
+output_fields:
+  - name: date
+    type: string
+    description: "数据日期 YYYY-MM-DD"
+  - name: available
+    type: boolean
+    description: "当日是否有录音数据"
+  - name: scenes
+    type: list
+    description: "录音场景列表，每项含 activity / start_time / summary / key_quotes"
+  - name: key_quotes
+    type: list
+    description: "关键引语列表，每项含 text / speaker / confidence"
+  - name: moods
+    type: list
+    description: "检测到的情绪标签，如 [tired, focused, happy]"
+  - name: macro_frames
+    type: list
+    description: "宏观帧：按会话合并的长段分析，含 key_topics / mood_or_tone / outcomes"
+
+# 定时任务建议
+schedule:
+  - cron: "0 23 * * *"
+    description: "每天23点拉取当天录音数据"
+  - cron: "0 7 * * *"
+    description: "每天早7点补拉昨日数据（防漏）"
+
+# 插件能力（供 Agent 使用）
+capabilities:
+  skills: []

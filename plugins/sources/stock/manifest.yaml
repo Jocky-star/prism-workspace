@@ -1,0 +1,51 @@
+id: stock
+name: stock
+type: source
+version: 1.0.0
+description: A股行情数据源 — 拉取自选股实时行情和市场新闻，支持技术指标信号
+
+# 配置项
+config:
+  watchlist:
+    required: false
+    default: []
+    description: "自选股列表，格式如 ['600036', '000001', '300750']"
+  include_news:
+    required: false
+    default: true
+    description: "是否同时拉取个股新闻"
+  news_limit:
+    required: false
+    default: 10
+    description: "每只股票最多拉取的新闻条数"
+
+# 输出字段
+output_fields:
+  - name: date
+    type: string
+    description: "数据日期 YYYY-MM-DD"
+  - name: available
+    type: boolean
+    description: "是否成功拉取数据"
+  - name: quotes
+    type: list
+    description: "行情数据列表，每项含 code / name / price / change_pct / volume"
+  - name: news
+    type: list
+    description: "市场新闻列表，每项含 title / time / source / url"
+  - name: signals
+    type: list
+    description: "技术指标信号，如 MACD 金叉 / 均线突破等"
+
+# 定时任务建议
+schedule:
+  - cron: "30 9,11,14,15 * * 1-5"
+    description: "交易日盘中关键时点拉取行情"
+  - cron: "0 16 * * 1-5"
+    description: "收盘后汇总当日数据"
+
+# 插件能力（供 Agent 使用）
+capabilities:
+  skills:
+    - a-share-monitor
+    - mootdx-china-stock-data

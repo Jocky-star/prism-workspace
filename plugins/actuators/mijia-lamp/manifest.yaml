@@ -1,0 +1,41 @@
+id: mijia-lamp
+name: mijia-lamp
+type: actuator
+version: 1.0.0
+description: 米家台灯执行器 — 根据存在检测和时段偏好自动控制米家台灯亮度和色温
+
+# 配置项
+config:
+  username:
+    required: true
+    default: ""
+    description: "小米账号（手机号或邮箱）"
+  password:
+    required: true
+    default: ""
+    description: "小米账号密码"
+  region:
+    required: false
+    default: "cn"
+    description: "服务器区域: cn / de / us / ru / tw / sg / in / i2"
+
+# 说明
+notes: |
+  台灯的时段偏好（亮度/色温）在 memory/intelligence/device_preferences.json 中配置，
+  由 intent-tracker 自动从对话中学习更新（如"中午不开灯"/"晚上喜欢暖光"）。
+
+# 支持的场景
+scenes:
+  off: "关灯"
+  focus: "专注模式（高亮/冷色）"
+  relax: "休闲模式（中亮/暖色）"
+  night: "夜间模式（低亮/最暖色）"
+  normal: "正常模式（随时段自动调整）"
+
+# 定时任务建议
+schedule: []
+
+# 插件能力（供 Agent 使用）
+capabilities:
+  skills:
+    - mijia-device-manager

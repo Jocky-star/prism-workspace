@@ -1,0 +1,53 @@
+id: intent-tracker
+name: intent-tracker
+type: pipeline
+version: 1.0.0
+description: 意图追踪管线 — 从录音和对话中提取用户的想法/计划/待办，自动归档到 todo.md / idea-capture.md
+
+# 依赖的数据源
+required_sources: []
+
+optional_sources:
+  - audio
+  - chat
+
+# 配置项
+config:
+  dry_run:
+    required: false
+    default: false
+    description: "测试模式"
+  auto_save_todos:
+    required: false
+    default: true
+    description: "自动将 todo 类意图写入 memory/todo.md"
+  auto_save_ideas:
+    required: false
+    default: true
+    description: "自动将 idea 类意图写入 memory/idea-capture.md"
+
+# 意图类型
+intent_types:
+  - wish: "愿望（想要某物/想去某地）"
+  - todo: "待办（具体任务）"
+  - idea: "想法/创意（灵感）"
+  - plan: "计划（较长期规划）"
+  - preference: "习惯/偏好（设备使用、时间偏好）"
+
+# 输出字段
+output_fields:
+  - name: intents
+    type: list
+    description: "提取的意图列表，每项含 type / content / quote / confidence"
+  - name: by_type
+    type: dict
+    description: "按类型分组的意图数量统计"
+
+# 定时任务建议
+schedule:
+  - cron: "30 23 * * *"
+    description: "每天23:30分析当日意图（在 audio 拉取之后）"
+
+# 插件能力
+capabilities:
+  skills: []

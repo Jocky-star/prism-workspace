@@ -1,0 +1,47 @@
+id: emotion-care
+name: emotion-care
+type: pipeline
+version: 1.0.0
+description: 情绪关怀管线 — 多信号叠加检测用户负面情绪，适时发送温暖的关怀消息
+
+# 依赖的数据源
+required_sources: []
+
+optional_sources:
+  - audio
+  - camera
+
+# 配置项
+config:
+  sensitivity:
+    required: false
+    default: "normal"
+    description: "灵敏度: low（需3+信号）/ normal（需2+信号）/ high（1个信号即触发）"
+  dry_run:
+    required: false
+    default: false
+    description: "测试模式"
+
+# 输出字段
+output_fields:
+  - name: triggered
+    type: boolean
+    description: "是否触发关怀"
+  - name: signal_score
+    type: number
+    description: "检测到的负面信号数量"
+  - name: signals
+    type: list
+    description: "具体信号列表，如 [录音情绪:疲惫, 摄像头观察:低沉]"
+  - name: care_message
+    type: string
+    description: "生成的关怀消息文本（触发时才有）"
+
+# 定时任务建议
+schedule:
+  - cron: "0 21 * * *"
+    description: "每天21点检测当日情绪状态"
+
+# 插件能力
+capabilities:
+  skills: []

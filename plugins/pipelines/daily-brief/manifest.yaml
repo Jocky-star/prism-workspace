@@ -1,0 +1,43 @@
+id: daily-brief
+name: daily-brief
+type: pipeline
+version: 1.0.0
+description: 晨间 Brief 生成器 — 每天早上汇报昨日完成的事、捕捉的意图、主动帮做的事
+
+# 依赖的数据源
+required_sources:
+  - chat
+
+optional_sources:
+  - audio
+  - stock
+  - camera
+
+# 配置项
+config:
+  send_to_feishu:
+    required: false
+    default: true
+    description: "是否自动发送到 Feishu"
+  dry_run:
+    required: false
+    default: false
+    description: "测试模式（不实际调用 LLM）"
+
+# 输出字段
+output_fields:
+  - name: brief
+    type: dict
+    description: "Brief 内容：key_conclusions / proactive / minor_updates / decisions_needed / system_status"
+  - name: formatted_message
+    type: string
+    description: "格式化后的 Feishu 消息文本"
+
+# 定时任务建议
+schedule:
+  - cron: "0 7 * * *"
+    description: "每天早7点生成并发送晨间 Brief"
+
+# 插件能力
+capabilities:
+  skills: []

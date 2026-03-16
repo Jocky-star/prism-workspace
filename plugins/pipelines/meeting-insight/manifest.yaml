@@ -1,0 +1,42 @@
+id: meeting-insight
+name: meeting-insight
+type: pipeline
+version: 1.0.0
+description: 会议洞察管线 — 从录音中提取 meeting 场景，生成每场会议的决策/分歧/行动项
+
+# 依赖的数据源
+required_sources:
+  - audio
+
+optional_sources: []
+
+# 配置项
+config:
+  dry_run:
+    required: false
+    default: false
+    description: "测试模式"
+
+# 支持的会议类型（来自录音 activity 标签）
+meeting_activity_labels:
+  - meeting
+  - group_discussion
+  - call
+
+# 输出字段
+output_fields:
+  - name: meeting_count
+    type: number
+    description: "当日检测到的会议数量"
+  - name: meetings
+    type: list
+    description: "每场会议分析结果：topic / decisions / disagreements / action_items / summary"
+
+# 定时任务建议
+schedule:
+  - cron: "0 20 * * *"
+    description: "每天20点分析当日会议录音"
+
+# 插件能力
+capabilities:
+  skills: []

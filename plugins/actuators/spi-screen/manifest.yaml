@@ -1,0 +1,51 @@
+id: spi-screen
+name: spi-screen
+type: actuator
+version: 1.0.0
+description: SPI 屏幕执行器 — 控制树莓派 SPI 接口的 framebuffer 屏幕，显示任务状态/便签/暗屏
+
+# 配置项
+config:
+  fb_path:
+    required: false
+    default: "/dev/fb0"
+    description: "framebuffer 设备路径"
+  display_interval:
+    required: false
+    default: 10
+    description: "屏幕刷新间隔（秒）"
+  spi_health_check:
+    required: false
+    default: 120
+    description: "SPI 健康检查间隔（秒）"
+  spi_recover_cooldown:
+    required: false
+    default: 300
+    description: "SPI 驱动重载后冷却时间（秒）"
+
+# 系统依赖
+dependencies:
+  system:
+    - framebuffer (/dev/fb0)
+  python:
+    - Pillow
+
+# 支持的动作
+actions:
+  - render_normal: "渲染正常状态屏幕（NOW/DONE/NOTE）"
+  - render_dim: "渲染暗屏（无人时显示时间）"
+  - render_summary: "渲染便签摘要（18-20点自动触发）"
+  - flash_event: "事件闪屏（alert/info/done）"
+
+# 显示模式
+display_modes:
+  normal: "有人在 → 显示当前任务状态"
+  summary: "18-20点 → 显示便签摘要"
+  dim: "无人 → 暗屏显示时钟"
+
+# 定时任务建议
+schedule: []
+
+# 插件能力
+capabilities:
+  skills: []

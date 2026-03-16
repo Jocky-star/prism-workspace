@@ -1,0 +1,38 @@
+id: chat
+name: chat
+type: source
+version: 1.0.0
+description: 对话记录数据源 — 自动从 OpenClaw memory/ 目录读取用户的 Feishu 聊天记录和记忆日志
+
+# 配置项
+config: {}
+# 零配置！自动读取以下路径：
+#   workspace/memory/YYYY-MM-DD.md  — 每日记忆日志
+#   workspace/memory/intelligence/  — 用户画像和意图追踪
+
+# 输出字段
+output_fields:
+  - name: date
+    type: string
+    description: "数据日期 YYYY-MM-DD"
+  - name: available
+    type: boolean
+    description: "是否有当日聊天记录"
+  - name: messages
+    type: list
+    description: "用户消息列表，每项含 text / timestamp / source"
+  - name: recent_memories
+    type: list
+    description: "近期记忆日志摘要列表"
+  - name: feedback
+    type: dict
+    description: "用户反馈偏好数据：adopted_suggestions / ignored_suggestions"
+
+# 定时任务建议
+schedule:
+  - cron: "0 22 * * *"
+    description: "每晚22点提取当日对话记录"
+
+# 插件能力
+capabilities:
+  skills: []

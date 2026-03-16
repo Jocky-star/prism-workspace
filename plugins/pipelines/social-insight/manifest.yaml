@@ -1,0 +1,52 @@
+id: social-insight
+name: social-insight
+type: pipeline
+version: 1.0.0
+description: 社交洞察管线 — 周度分析一周内的人际互动，提炼关系动态和维护建议
+
+# 依赖的数据源
+required_sources: []
+
+optional_sources:
+  - chat
+  - audio
+
+# 配置项
+config:
+  dry_run:
+    required: false
+    default: false
+    description: "测试模式"
+  lookback_days:
+    required: false
+    default: 7
+    description: "回溯天数（默认一周）"
+
+# 读取的文件
+data_files:
+  - "memory/people.md"           # 人物备注
+  - "memory/intelligence/relationships.json"  # 关系数据
+
+# 输出字段
+output_fields:
+  - name: week_summary
+    type: string
+    description: "本周人际互动总体概况"
+  - name: key_interactions
+    type: list
+    description: "重要互动：person / event / note"
+  - name: relationship_changes
+    type: list
+    description: "关系状态变化或值得关注的动态"
+  - name: suggestions
+    type: list
+    description: "下周人际维护建议（1-3条）"
+
+# 定时任务建议
+schedule:
+  - cron: "0 9 * * 1"
+    description: "每周一早9点生成上周人际洞察"
+
+# 插件能力
+capabilities:
+  skills: []
