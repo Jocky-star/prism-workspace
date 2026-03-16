@@ -1,379 +1,354 @@
-# Prism — 理解用户，主动服务
+# Prism — 你的个人智能秘书
 
-从多数据源理解用户（录音/对话/摄像头/行为），生成个性化服务（晨间 Brief/意图追踪/情绪关怀/设备控制）。
+从多数据源理解用户，主动提供服务。基于 OpenClaw 平台。
 
-## 首次安装（Agent 执行）
+---
 
-如果是全新安装，按以下步骤操作：
+## 🚀 Agent 必读：安装与配置指南
+
+你（Agent）是用户的 OpenClaw Assistant。当用户让你安装 Prism 时，按以下步骤操作。
+**用户不需要手动执行任何命令，全部由你来完成。**
+
+### 阶段一：基础安装（5 分钟）
 
 ```bash
-# 1. clone 项目
-git clone https://github.com/Jocky-star/prism-workspace.git
+# 1. 进入项目目录（如果是 clone 来的）
 cd prism-workspace
 
-# 2. 初始化配置
+# 2. 初始化配置文件
 python3 main.py setup
-# → 会自动复制 config.example.yaml → config.yaml
-# → 告知需要填写的字段
+# → 自动复制 config.example.yaml → config.yaml
 
-# 3. 编辑 config.yaml，填入飞书和 LLM 配置
+# 3. 向用户收集以下信息，填入 config.yaml：
+#    必填：
+#    - feishu.app_id        — 飞书应用 App ID
+#    - feishu.app_secret    — 飞书应用 App Secret  
+#    - feishu.target_user_open_id — 用户的飞书 Open ID
+#    - llm.endpoint         — LLM API 地址（OpenAI 兼容格式）
+#    - llm.api_key          — LLM API Key
+#
+#    获取飞书配置：https://open.feishu.cn → 创建自建应用 → 凭证与基础信息
+#    飞书需要的权限：im:message:send_v2（发送消息）
 
-# 4. 验证配置
+# 4. 验证
 python3 main.py status
+# → 检查飞书和 LLM 是否都显示 ✅
 
 # 5. 预览第一份 Brief
 python3 main.py brief --dry-run
 ```
 
-## 进阶配置
+**基础安装完成后，用户每天 8:30 会收到一份个人简报。**
 
-基础 Brief 跑通后，引导用户配置更多功能：
+### 阶段二：数据源接入（按需）
 
-### 数据源
+运行 `python3 main.py guide` 查看所有可配置项。
 
-```bash
-# 查看配置引导
-python3 main.py guide
+Prism 的能力取决于接入的数据源。数据越多，服务越智能。
+
+| 数据源 | 配置项 | 需要什么 | 能做什么 |
+|--------|--------|----------|----------|
+| 对话记录 | 自动 | 零配置，从 OpenClaw memory/ 读取 | 理解用户意图和偏好 |
+| 录音转写 | `sources.audio.*` | 音频转写 API | 深度理解用户生活（会议/社交/想法） |
+| 股票监控 | `sources.stock.*` | 关注列表 | 行情播报、技术信号 |
+| 摄像头 | `features.camera.*` | 树莓派 + 摄像头 | 存在检测、健康关怀 |
+
+**示例：开启录音数据源**
+```yaml
+# 编辑 config.yaml
+sources:
+  audio:
+    enabled: true
+    api_url: "https://用户的转写服务地址"
+    api_key: "用户的 API Key"
 ```
 
-引导用户提供：
-- 录音转写 API 地址和 Key（如有）
-- 股票关注列表（如需）
-- 摄像头/米家/屏幕 等硬件配置（如有）
-
-### 定时任务
+### 阶段三：定时任务（一键完成）
 
 ```bash
 python3 main.py cron-setup
 ```
 
-自动设置所有定时任务，无需手动编辑 crontab。
-幂等操作，重复运行不会重复添加。
+自动设置以下定时任务（幂等，重复运行安全）：
+- **22:45** — 拉取录音数据
+- **23:10** — 每日智能管线（感知 → 理解 → 摘要）
+- **23:20** — 服务管线（Brief 生成）
+- **08:30** — 晨间 Brief 推送到飞书
+- **周日 20:00** — 周精炼（人物合并/关系精判）
+
+### 阶段四：硬件扩展（可选）
+
+以下功能需要特定硬件，大多数用户可以跳过。
+
+**米家智能家居**
+```yaml
+features:
+  mijia:
+    enabled: true
+    username: "用户手机号"
+    password: "用户密码"
+    region: "cn"
+```
+开启后：根据用户存在状态自动控灯、根据对话偏好调整亮度色温。
+
+**Prism 状态屏（树莓派 + SPI 屏）**
+```yaml
+features:
+  screen:
+    enabled: true
+```
+开启后：实时显示当前任务状态、天气、提醒。
+
+**摄像头感知**
+```yaml
+features:
+  camera:
+    enabled: true
+    rotation: 180  # 如果摄像头物理倒置
+```
+开启后：检测用户是否在桌前，联动灯和屏幕。
 
 ---
 
-## 什么时候使用（已安装后）
+## 📋 日常使用命令
 
-- 需要生成用户的晨间简报、会议洞察、意图追踪
-- 需要从对话/录音中提取用户偏好并自动执行（如控制台灯）
-- 需要运行智能理解管线（感知→理解→服务）
-- 需要查询用户画像、行为模式、社交关系
-- 需要控制 Prism 屏幕显示或米家设备
+安装完成后，以下是你（Agent）日常会用到的命令：
 
-## 快速开始
+### 核心命令
 
-```bash
-# 1. 看看有什么数据源可用
-python3 src/services/data_sources.py --discover
+| 命令 | 说明 |
+|------|------|
+| `python3 main.py status` | 系统状态总览 |
+| `python3 main.py brief` | 生成并推送今日 Brief |
+| `python3 main.py brief --dry-run` | 预览 Brief 不推送 |
+| `python3 main.py guide` | 查看配置引导 |
+| `python3 main.py cron-setup` | 设置/更新定时任务 |
 
-# 2. 跑一次管线（dry-run 不调 LLM）
-python3 src/services/pipeline.py --dry-run
-
-# 3. 生成晨间 Brief（用昨天的数据）
-python3 src/services/generators/daily_brief.py --date 2026-03-12 --format
-```
-
-## LLM 配置
+### 服务管线
 
 ```bash
-# 方式一：环境变量
-export LLM_BASE_URL=https://your-api-endpoint/v1
-export LLM_API_KEY=your-api-key
-
-# 方式二：自动读取 ~/.openclaw/agents/main/agent/models.json 中的 litellm provider
-```
-
-## 初始化定时任务
-
-```bash
-# 一键安装所有 cron（晨间Brief / 每日管线 / 每周洞察）
-bash setup_crons.sh
-```
-
-安装后自动生效：
-- **每天 8:30** — 晨间 Brief 推送给用户
-- **每天 23:40** — 跑 daily pipeline（会议/意图/情绪）
-- **每周日 21:00** — 人际洞察推送
-
-## 核心命令
-
-### 服务系统
-
-```bash
-# 数据源发现
-python3 src/services/data_sources.py --discover
-
-# 完整管线（daily + morning + weekly）
+# 完整管线（会调 LLM）
 python3 src/services/pipeline.py --date YYYY-MM-DD
+
+# Dry-run（不调 LLM，验证数据流）
 python3 src/services/pipeline.py --date YYYY-MM-DD --dry-run
 
 # 单独跑某条管线
 python3 src/services/pipeline.py --date YYYY-MM-DD --pipeline daily
 python3 src/services/pipeline.py --date YYYY-MM-DD --pipeline morning
 python3 src/services/pipeline.py --date YYYY-MM-DD --pipeline weekly
-
-# 查看服务偏好
-python3 src/services/pipeline.py --check-prefs
 ```
 
-### 服务生成器（单独调用）
+### 单独调用服务生成器
 
 ```bash
-# 晨间 Brief — 给结果不给建议
+# 晨间 Brief
 python3 src/services/generators/daily_brief.py --date YYYY-MM-DD --format
 
-# 会议洞察 — 分歧/决策/行动项
-python3 src/services/generators/meeting_insight.py --date YYYY-MM-DD
-
-# 意图追踪 — wish/todo/idea/plan/preference 自动分类
+# 意图追踪（从对话/录音中捕捉用户意图）
 python3 src/services/generators/intent_tracker.py --date YYYY-MM-DD
 
-# 情绪关怀 — 多信号叠加检测
+# 情绪关怀（多信号叠加检测）
 python3 src/services/generators/emotion_care.py --date YYYY-MM-DD
 
-# 人际洞察 — 本周社交动态
+# 会议洞察（分歧/决策/行动项）
+python3 src/services/generators/meeting_insight.py --date YYYY-MM-DD
+
+# 人际洞察（本周社交动态）
 python3 src/services/generators/social_insight.py --date YYYY-MM-DD
 ```
 
-### 设备偏好（对话→设备控制）
+### 智能理解层
+
+```bash
+# 感知：从录音提取实体/事件/意图
+python3 src/intelligence/perception.py --date YYYYMMDD
+
+# 理解：生成用户画像/社交图谱
+python3 src/intelligence/understand.py
+
+# 周精炼：人物合并/关系精判/价值观提取
+python3 src/intelligence/weekly_refine.py
+
+# 冷启动：批量处理所有历史数据
+python3 src/intelligence/bootstrap.py
+```
+
+### 数据源
+
+```bash
+# 发现可用数据源
+python3 src/services/data_sources.py --discover
+
+# 手动拉取录音数据
+python3 src/sources/audio/fetch.py --date YYYY-MM-DD
+```
+
+### Prism 屏幕（需要硬件）
+
+```bash
+# 更新屏幕状态
+python3 src/screen/update.py --task "正在做的事"
+python3 src/screen/update.py --done "完成的事"
+python3 src/screen/update.py --note "提醒内容"
+
+# 事件闪屏
+python3 src/screen/event.py --type info --text "有新消息"
+```
+
+### 设备偏好
 
 ```bash
 # 查看当前规则
 python3 src/services/device_preferences.py --list
 
-# 手动添加（通常由 intent_tracker 自动处理）
+# 用户说"中午不开灯"时，intent_tracker 会自动处理
+# 手动添加也行：
 python3 src/services/device_preferences.py --add-lamp "13" "off" "午休不开灯"
-
-# 删除规则
-python3 src/services/device_preferences.py --remove-lamp "13"
 ```
 
-用户说"中午13到14点不开灯"时，intent_tracker 会自动：
-1. LLM 分类为 preference（置信度 95%）
-2. 解析为结构化规则 → 写入 device_preferences.json
-3. 如果当前在时间范围内 → 立即执行台灯关闭
-4. 之后 daemon 每次检测时自动按偏好执行
+---
 
-### 智能理解层
+## 🔌 插件系统（开发者）
 
-```bash
-# 感知：从录音数据提取实体/事件/意图
-python3 src/intelligence/perception.py --date YYYYMMDD
+Prism 支持三类插件，新的数据源/设备/服务不需要改核心代码。
 
-# 理解：生成用户画像/社交图谱/行为模式
-python3 src/intelligence/understand.py
+### 插件类型
 
-# 每周精炼：人物合并/关系精判/价值观提取
-python3 src/intelligence/weekly_refine.py
+| 类型 | 用途 | 接口 | 示例 |
+|------|------|------|------|
+| Source | 数据进来 | `setup()` `fetch()` `health_check()` | 录音、戒指、日历 |
+| Pipeline | 数据加工 | `generate()` `format()` | Brief、健康报告 |
+| Actuator | 动作出去 | `execute()` `get_capabilities()` | 台灯、空调、音箱 |
 
-# 冷启动：批量处理历史数据
-python3 src/intelligence/bootstrap.py
+### 插件结构
+
+```
+plugins/sources/my-source/
+├── manifest.yaml      # 声明配置项和输出格式
+├── plugin.py          # 实现标准接口
+├── README.md          # 给 Agent 看的说明
+└── requirements.txt   # Python 依赖（可选）
 ```
 
-### Prism 屏幕（需树莓派 + SPI 屏幕）
-
-屏幕是一个 **device 插件**（`spi_screen.py`），和台灯平等。不需要屏幕的用户在 `prism_config.yaml` 里不配 `spi_screen` 就行，daemon 不会报错。
-
-**默认零配置**：启动 daemon 后，屏幕会自动监听 OpenClaw gateway 的 session 活动，推断并显示当前状态。不需要手动调用任何命令。
-
-**想手动控制？** 手动设置后 5 分钟内不会被自动推断覆盖：
-
-```bash
-# 更新当前任务
-python3 src/screen/update.py --task "正在做的事"
-
-# 标记完成
-python3 src/screen/update.py --done "做完的事"
-
-# 添加提醒
-python3 src/screen/update.py --note "提醒内容"
-
-# 事件闪屏（alert=红/info=蓝/done=绿）
-python3 src/screen/event.py --type info --text "有新消息"
-```
-
-**也可以直接写文件**（任何语言/脚本都行）：
-```bash
-echo '{"current_task": "我的任务", "auto_inferred": false}' > memory/prism_state.json
-```
-
-详细协议见 [STATE_PROTOCOL.md](src/screen/STATE_PROTOCOL.md)。
-
-### 存在检测 + 设备联动（全插件化）
-
-daemon 是**纯调度器**，不知道有什么摄像头、什么检测算法、什么设备。三层管线全部通过 `prism_config.yaml` 配置：
+### manifest.yaml 示例
 
 ```yaml
-# prism_config.yaml — 三层管线配置
+name: oura-ring
+type: source
+version: "1.0.0"
+description: "Oura 智能戒指健康数据"
 
-# 感知层：怎么拍照
+config:
+  api_token:
+    type: string
+    required: true
+    description: "Oura API Token"
+    help_url: "https://cloud.ouraring.com/personal-access-tokens"
+
+output:
+  format: jsonl
+  fields:
+    - name: sleep_score
+      type: number
+    - name: heart_rate_avg
+      type: number
+
+schedule:
+  cron: "0 6 * * *"
+  description: "每天早上6点同步"
+```
+
+### plugin.py 示例（Source）
+
+```python
+from prism.plugin_base import SourcePlugin
+
+class OuraRingSource(SourcePlugin):
+    def setup(self, config: dict) -> bool:
+        """验证配置是否有效"""
+        self.token = config.get("api_token")
+        return bool(self.token)
+    
+    def fetch(self, date: str) -> list[dict]:
+        """拉取指定日期的数据"""
+        # 调 API，返回标准格式
+        return [{"sleep_score": 85, "heart_rate_avg": 62}]
+    
+    def health_check(self) -> dict:
+        return {"status": "ok", "last_sync": "2026-03-16"}
+```
+
+### Prism 屏幕插件（三层架构）
+
+如果用户有树莓派，屏幕系统使用独立的插件配置 `prism_config.yaml`：
+
+```yaml
 sensors:
-  - plugin: rpicam           # 内置：树莓派摄像头
-    enabled: true
+  - plugin: rpicam
     config:
-      rotation: 180          # 摄像头旋转角度
-      width: 640
-      height: 480
-  # - plugin: usb_camera     # 换 USB 摄像头？写个插件注册就行
+      rotation: 180
 
-# 检测层：怎么判断有没有人
 detectors:
-  - plugin: frame_diff       # 内置：帧差预筛（零成本，毫秒级）
-    enabled: true
+  - plugin: frame_diff
     config:
       threshold: 0.005
-      skip_vision_below: 0.005  # 帧差极低时跳过 Vision API
-  - plugin: vision_api       # 内置：LLM Vision 检测（准但贵）
-    enabled: true
+  - plugin: vision_api
     config:
-      scene: "办公桌前"       # 改成你的场景描述
-  # - plugin: local_yolo     # 不想花 API 钱？写个本地检测器
+      scene: "办公桌前"
 
-# 执行层：检测到人/没人后做什么
 devices:
-  - plugin: spi_screen       # 内置：SPI 屏幕（有人显示状态板，无人暗屏）
-    enabled: true
+  - plugin: spi_screen
     config:
       fb_path: "/dev/fb0"
-      display_interval: 10
-  - plugin: mijia_lamp       # 内置：米家台灯（有人开灯，无人关灯）
-    enabled: true
-  # - plugin: homeassistant  # 用 HA 的？写个插件
-  # - plugin: yeelight       # Yeelight 台灯？写个插件
-
-# 存在判定参数
-presence:
-  scene: "办公桌前"
-  absent_timeout: 300        # 5 分钟没检测到人算离开
-  camera_interval: 30        # 每 30 秒检测一次
+  - plugin: mijia_lamp
 ```
 
-**没有摄像头？** 去掉 sensors 和 detectors，只保留 devices — 屏幕照常显示。
-**没有屏幕？** devices 里不配 spi_screen 就行。
-**没有台灯？** 不配 mijia_lamp 就行。
-**什么硬件都没有？** 不需要 prism_config.yaml，只用服务系统就行。
+写新插件只需实现对应接口，放到 `src/screen/plugins/` 目录，配置注册即可。
 
-#### 写新的感知插件（Sensor）
+---
 
-```python
-# src/screen/plugins/sensors/your_camera.py
-from .. import SensorPlugin
-
-class Plugin(SensorPlugin):
-    def capture(self) -> "PIL.Image.Image | None":
-        # 拍一张照片，返回 PIL Image
-        pass
-```
-
-配置注册 → 重启 daemon 生效。
-
-#### 写新的检测插件（Detector）
-
-```python
-# src/screen/plugins/detectors/your_detector.py
-from .. import DetectorPlugin
-
-class Plugin(DetectorPlugin):
-    def detect(self, image, context: dict) -> dict:
-        # 输入图片，返回 {"detected": bool, "confidence": float, "skip": bool}
-        pass
-```
-
-检测器按配置顺序执行。上一个返回 `skip=True` 时后续检测器跳过。
-
-#### 写新的执行插件（Device）
-
-```python
-# src/screen/plugins/devices/your_device.py
-from .. import DevicePlugin
-
-class Plugin(DevicePlugin):
-    def on_init(self):
-        # daemon 启动时调用（可选，屏幕在这里启动显示线程）
-        pass
-    
-    def on_present(self, hour: int):
-        # 有人来了
-        pass
-    
-    def on_absent(self):
-        # 人走了
-        pass
-```
-
-配置注册 → 重启 daemon 生效。示例见 `src/screen/plugins/` 目录。
-
-### 米家台灯
-
-```bash
-# 查看状态
-python3 -c "
-import sys; sys.path.insert(0, 'src/actions/integrations')
-from mijia_lamp import get_status
-print(get_status())
-"
-
-# 手动切换场景
-python3 -c "
-import sys; sys.path.insert(0, 'src/actions/integrations')
-from mijia_lamp import set_scene
-set_scene('focus')   # focus/normal/relax/night/off
-"
-```
-
-## 数据源
-
-系统自动发现可用数据源，缺少的会优雅跳过：
-
-| 数据源 | 路径 | 说明 |
-|--------|------|------|
-| audio | skills/audio-daily-insight/raw_json/ | 录音转写 JSON（mf_scene_v2.x） |
-| chat | memory/intelligence/chat_messages.jsonl | 对话记录 |
-| vision | memory/visual/YYYY-MM-DD.jsonl | 摄像头观察 |
-| habit | memory/habits/behavior_rules.json | 行为预测 |
-| weather | memory/weather.json | 天气 |
-| memory | memory/YYYY-MM-DD.md | 每日记忆 |
-
-### 新增数据源
-
-继承 `DataSource` 类，实现 `get_today_data()` 和 `is_available()`，加到 `ALL_SOURCES` 列表：
-
-```python
-# src/services/data_sources.py
-
-class MyDataSource(DataSource):
-    name = "mydata"
-    description = "我的数据"
-    
-    def is_available(self) -> bool:
-        return Path("my_data.json").exists()
-    
-    def get_today_data(self, date: str) -> Dict[str, Any]:
-        # 读取并返回数据...
-
-ALL_SOURCES.append(MyDataSource)
-```
-
-## 文件结构
+## 📁 项目结构
 
 ```
-src/services/          # 服务闭环系统（核心）
-src/intelligence/      # 智能理解层
-src/actions/           # 执行层（规划/监控/设备）
-src/screen/            # Prism 屏幕（需硬件）
-src/infra/             # 基础设施
+main.py                    # 统一入口
+config.yaml                # 用户配置（不入 git）
+config.example.yaml        # 配置模板
 
-memory/                # 数据存储
-memory/intelligence/   # 理解层输出
-memory/services/       # 服务生成输出
-memory/visual/         # 摄像头记录
-memory/habits/         # 行为数据
+src/
+├── services/              # 服务系统（Brief/意图/情绪/会议/社交）
+│   ├── generators/        # 各服务生成器
+│   ├── pipeline.py        # 管线调度
+│   ├── morning_push.py    # 飞书推送
+│   ├── config.py          # 配置读取
+│   ├── llm_client.py      # LLM 调用
+│   └── data_sources.py    # 数据源注册
+├── intelligence/          # 智能理解（感知/理解/精炼）
+├── sources/               # 数据源（录音/摄像头/对话/股票）
+├── screen/                # Prism 屏幕（需硬件）
+│   └── plugins/           # 三层插件（sensor/detector/device）
+├── actions/               # 执行层（监控/规划/集成）
+└── infra/                 # 基础设施
+
+memory/                    # 数据存储（不入 git）
+├── intelligence/          # 理解层输出（画像/关系/事件）
+├── services/              # 服务输出（Brief）
+├── action_log/            # 行动日志
+├── visual/                # 摄像头记录
+└── habits/                # 行为数据
+
+plugins/                   # 插件目录（未来扩展）
+├── sources/
+├── pipelines/
+└── actuators/
 ```
 
-## 注意事项
+---
 
-- 所有脚本从项目根目录运行：`python3 src/services/xxx.py`
-- LLM 默认用 Haiku（便宜快速），可通过 `LLM_MODEL` 环境变量覆盖
-- 路径通过 `WORKSPACE` 环境变量自动检测，不硬编码
+## ⚠️ 注意事项
+
+- 所有脚本从**项目根目录**运行：`python3 src/services/xxx.py`
+- LLM 默认使用轻量模型（省钱），可通过 config.yaml 的 `llm.default_model` 调整
 - `--dry-run` 参数可在不调 LLM 的情况下验证数据流
-- `--format` 参数输出人类可读的格式化文本
+- config.yaml 包含敏感信息，已在 .gitignore 中，不会被推到 GitHub
+- 数据目录（memory/、data/）也不入 git
