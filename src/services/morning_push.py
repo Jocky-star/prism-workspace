@@ -119,15 +119,66 @@ def get_tenant_access_token() -> str | None:
         return None
 
 
-def send_feishu_message(user_id: str, text: str, token: str) -> bool:
-    """发送飞书私信（纯文本）"""
+def _text_to_post_content(text: str) -> dict:
+    """把 format_brief_message 输出的纯文本转成飞书 Interactive Card 格式。
+
+    Interactive Card 支持 markdown（加粗、列表），比 post 格式更灵活。
+    结构：
+    - header: 第一行作标题（蓝色）
+    - body: 一个 markdown element 包含剩余内容
+    """
+    lines = text.split("\n")
+    title = lines[0].strip() if lines else "早安 Brief"
+    body_lines = lines[1:] if len(lines) > 1 else []
+
+    # 把剩余内容拼成 markdown
+    # 段落标题（emoji 开头）→ **加粗**
+    # bullet 行（- 开头）→ 保留
+    # 普通行 → 保留
+    md_parts = []
+    SECTION_EMOJIS = ("📌", "🎯", "📊", "💭", "✅", "🔄", "📋", "💡", "📎")
+
+    for line in body_lines:
+        stripped = line.strip()
+        if not stripped:
+            md_parts.append("")
+            continue
+        # 段落标题加粗
+        is_section = any(stripped.startswith(e) for e in SECTION_EMOJIS) and not stripped.startswith("- ")
+        if is_section:
+            md_parts.append(f"**{stripped}**")
+        else:
+            md_parts.append(stripped)
+
+    body_md = "\n".join(md_parts).strip()
+
+    return {
+        "elements": [
+            {
+                "tag": "markdown",
+                "content": body_md,
+            }
+        ],
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": title,
+            },
+            "template": "blue",
+        },
+    }
+
+
+def send_feishu_post(user_id: str, text: str, token: str) -> bool:
+    """发送飞书私信（Interactive Card + markdown，支持加粗）"""
     try:
+        card_content = _text_to_post_content(text)
         result = _http_post(
             f"{FEISHU_DOMAIN}/open-apis/im/v1/messages?receive_id_type=open_id",
             {
                 "receive_id": user_id,
-                "msg_type": "text",
-                "content": json.dumps({"text": text}),
+                "msg_type": "interactive",
+                "content": json.dumps(card_content),
             },
             {
                 "Content-Type": "application/json",
@@ -136,13 +187,13 @@ def send_feishu_message(user_id: str, text: str, token: str) -> bool:
         )
         code = result.get("code", -1)
         if code == 0:
-            log.info(f"✅ Sent to {user_id}")
+            log.info(f"✅ Sent interactive card to {user_id}")
             return True
         else:
             log.error(f"Feishu API error code={code} msg={result.get('msg','')} for {user_id}")
             return False
     except Exception as e:
-        log.error(f"send_feishu_message({user_id}) error: {e}")
+        log.error(f"send_feishu_post({user_id}) error: {e}")
         return False
 
 
@@ -155,7 +206,7 @@ def push_to_feishu(msg: str) -> bool:
 
     any_success = False
     for uid in FEISHU_USER_IDS:
-        ok = send_feishu_message(uid, msg, token)
+        ok = send_feishu_post(uid, msg, token)
         if ok:
             any_success = True
 

@@ -158,48 +158,43 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
         actions = []
         action_summary = ""
 
-    system_prompt = """你是一个私人助理，给用户做每日汇报。
+    system_prompt = """你是一个私人秘书，每天早上给老板做一句话简报。
 
-**最重要的规则：只汇报真正做过的事。没做过的，一个字都不要编。**
+## 铁律
+1. **只写结论，不写过程** — "发现了X项目，它能做Y，对你的价值是Z"，不写"已开始研究X"
+2. **每条信息必须回答 so what** — 没结论的不写，宁可空着
+3. **只汇报真实发生的事** — 行动日志里有的才写 deliveries/proactive，没有就空数组
+4. **300字以内** — 超过就裁，留最重要的
 
-你会收到两种数据：
-1. **行动日志（action_log）**：这是已经真正执行过的事情。直接写进 deliveries / proactive。
-2. **多源数据（录音/对话/行为等）**：用来提取 captured_intents 和 tracking。
-
-汇报原则：
-- 行动日志里有的 → 如实汇报
-- 行动日志里没有的 → deliveries 和 proactive 留空数组，**绝对不编造**
-- 不暴露技术细节（不提日期、数据源、pipeline、模型、脚本）
-- 语气自然，像朋友汇报工作
-
-输出 JSON：
+## 输出结构
+输出 JSON，严格按下面的格式：
 {
-  "deliveries": [
-    {"title": "做了什么", "detail": "具体结果"}
+  "conclusions": [
+    "XXX项目研究完毕：它能做Y，建议你Z（一句话，含具体名称和结论）",
+    "XX任务已完成：结果是Y"
   ],
-  "proactive": [
-    {"insight": "我注意到你最近...", "action": "所以我帮你...", "result": "结果（可选）"}
+  "decisions_needed": [
+    {"item": "事项名", "option_a": "A方案及优点", "option_b": "B方案及优点"}
   ],
-  "captured_intents": [
-    {"quote": "用户提到的事（≤30字）", "action_taken": "做了什么/还没做", "status": "done/in_progress/prepared"}
-  ],
-  "prepared_for_today": [
-    {"title": "准备了什么", "content": "可以直接用的内容"}
-  ],
-  "tracking": [
-    {"item": "跟踪项", "status": "进展", "next_action": "下一步"}
-  ],
-  "status_note": "一句自然的状态观察（可选，空字符串也行）"
+  "system_status": "一切正常",
+  "deliveries": [{"title": "做了什么", "detail": "具体结果"}],
+  "proactive": [{"insight": "注意到...", "action": "帮你做了...", "result": "结果"}],
+  "captured_intents": [{"quote": "用户说的话≤30字", "action_taken": "做了/还没做", "status": "done/in_progress/prepared"}],
+  "prepared_for_today": [{"title": "准备了什么", "content": "可直接用的内容"}],
+  "tracking": [{"item": "跟踪项", "status": "进展一句话", "next_action": "下一步"}]
 }
 
-字段规则：
-- **deliveries**: 只从 action_log 中 category=delivery 的记录生成。没有就空数组。
-- **proactive**: 只从 action_log 中 category=proactive 的记录生成。没有就空数组。每条精简：insight ≤ 20字，action ≤ 30字。
-- **captured_intents**: 从录音/对话中提取用户提到但可能还没被执行的意图。如果 action_log 里有对应的 intent_followup 记录，status 标 done。
-- **prepared_for_today**: 有可以直接用的交付物才写，没有就空数组。如果涉及飞书文档，content 里必须包含完整链接（格式：https://ccnq3wnum0kr.feishu.cn/docx/{doc_token}）。
-- **tracking**: 长线事项的进展。
+## 字段规则
+- **conclusions**: 从 deliveries + intents + tracking 中提炼真正的结论。格式："X事项：结论是Y"。没结论的不写。
+- **decisions_needed**: 需要用户拍板的事，给A/B选项而不是"等待中"。能先做的先做，只有真正需要决策的才放这里。
+- **system_status**: 一行，"一切正常"或具体异常。
+- **deliveries**: 只从 action_log category=delivery 生成，没有就空数组。
+- **proactive**: 只从 action_log category=proactive 生成，没有就空数组。
+- **captured_intents**: 从录音/对话提取，若 action_log 有 intent_followup 对应记录则 status=done。
+- **prepared_for_today**: 有可直接用的交付物才写，飞书文档必须含完整链接。
+- **tracking**: 长线事项，状态必须是结论性的（"完成了X"），不写"进行中"。
 
-⚠️ 宁可 deliveries 和 proactive 为空，也绝不编造。Brief 的信任感比内容丰富度重要 100 倍。
+⚠️ 宁可 conclusions 只有1条，也绝不编造。Brief 的信任感 > 内容丰富度。
 """
 
     # 行动日志是 Brief 的核心依据
@@ -321,92 +316,104 @@ def _format_proactive_entry(p: Dict[str, Any]) -> tuple[str, Optional[str]]:
 
 
 def format_brief_message(brief: Dict[str, Any]) -> str:
-    """Format brief into a natural, human-friendly message.
-    
-    不要暴露技术细节（日期、数据源、pipeline），像秘书一样汇报：
-    - 我帮你做了什么
-    - 根据你的习惯/偏好我做了什么
-    - 需要你拍板的事
+    """Format brief into a conclusion-first, secretary-style message.
+
+    结构：
+      ☀️ 早安 Brief | M月D日
+      📌 结论速览（每条一句话结论）
+      🎯 需要你选（A/B 决策项）
+      📊 系统状态（一行）
+    原则：没结论不写，不超过 300 字。
     """
+    import re
     b = brief.get("brief", {})
+    date_str = brief.get("date", "")
     parts: List[str] = []
 
-    parts.append("☀️ 早上好\n")
+    # 标题
+    if date_str:
+        try:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            title_date = f"{dt.month}月{dt.day}日"
+        except Exception:
+            title_date = date_str
+    else:
+        title_date = ""
+    parts.append(f"☀️ 早安 Brief{' | ' + title_date if title_date else ''}\n")
 
-    # Deliveries — 我帮你做了什么
-    deliveries = b.get("deliveries", [])
-    if deliveries:
-        parts.append("**最近帮你搞定了这些**\n")
-        for d in deliveries:
-            parts.append(f"📌 **{d['title']}**")
-            if d.get("detail"):
-                parts.append(f"  {d['detail']}")
-            parts.append("")
+    # ---------- 📌 结论速览 ----------
+    # 优先用 LLM 生成的 conclusions 字段
+    conclusions: List[str] = b.get("conclusions", [])
 
-    # Proactive — 我注意到...所以帮你做了...
-    proactive = b.get("proactive", [])
-    if proactive:
-        parts.append("**注意到你最近的状态，我主动做了这些**\n")
-        for p in proactive:
-            entry_text, _sid = _format_proactive_entry(p)
-            parts.append(entry_text)
-            parts.append("")
-
-    # Captured intents — 你提到的我记住了
-    intents = b.get("captured_intents", [])
-    if intents:
-        parts.append("**你提到的这些我都跟进了**\n")
-        for i in intents:
-            status_icon = {"done": "✅", "in_progress": "🔄", "prepared": "📋"}.get(i.get("status"), "📝")
-            quote = i.get("quote", "")
-            # 截短引用，不要太长
-            if len(quote) > 40:
-                quote = quote[:37] + "..."
-            parts.append(f'{status_icon} "{quote}"')
-            parts.append(f"   → {i.get('action_taken', '')}")
-            parts.append("")
-
-    # Prepared — 根据你的情况准备好的
-    prepared = b.get("prepared_for_today", [])
-    if prepared:
-        parts.append("**根据你的情况提前准备了**\n")
-        for p in prepared:
-            parts.append(f"📎 **{p['title']}**")
-            if p.get("content"):
-                # 截取前 200 字，避免太长
-                content = p["content"]
-                # 自动把裸 doc_token 或不完整链接转成带租户域名的完整链接
-                import re
-                # 修复 feishu.cn/docx/xxx → ccnq3wnum0kr.feishu.cn/docx/xxx
-                content = re.sub(
-                    r'https?://feishu\.cn/(docx|base|wiki)/',
-                    r'https://ccnq3wnum0kr.feishu.cn/\1/',
-                    content
-                )
-                if len(content) > 200:
-                    content = content[:197] + "..."
-                parts.append(f"  {content}")
-            parts.append("")
-
-    # Tracking — 需要你关注/拍板的
-    tracking = b.get("tracking", [])
-    if tracking:
-        parts.append("**需要你关注的**\n")
-        for t in tracking:
-            parts.append(f"🔄 **{t['item']}**")
+    # 若 LLM 没输出 conclusions，从 deliveries/intents/tracking 中拼凑
+    if not conclusions:
+        for d in b.get("deliveries", []):
+            title = d.get("title", "")
+            detail = d.get("detail", "")
+            if title and detail:
+                conclusions.append(f"{title}：{detail}")
+            elif title:
+                conclusions.append(title)
+        for i in b.get("captured_intents", []):
+            if i.get("status") == "done":
+                quote = i.get("quote", "")[:30]
+                action = i.get("action_taken", "")
+                if quote and action:
+                    conclusions.append(f"{quote} → {action}")
+        for t in b.get("tracking", []):
+            item = t.get("item", "")
             status = t.get("status", "")
-            if status:
-                parts.append(f"  {status}")
-            if t.get("next_action"):
-                parts.append(f"  👉 {t['next_action']}")
-            parts.append("")
+            # 过滤掉空洞进展描述
+            boring = {"进行中", "已开始", "进行中...", "开始了", "还在进行"}
+            if item and status and status not in boring:
+                conclusions.append(f"{item}：{status}")
 
-    # Status note — 补充观察
-    note = b.get("status_note", "")
-    if note:
-        parts.append(f"💭 {note}")
+    if conclusions:
+        parts.append("📌 结论速览")
+        for c in conclusions:
+            parts.append(f"- {c}")
+        parts.append("")
 
-    return "\n".join(parts)
+    # ---------- 🎯 需要你选 ----------
+    decisions = b.get("decisions_needed", [])
+    # 也从 tracking.next_action 中提取需要决策的项
+    for t in b.get("tracking", []):
+        na = t.get("next_action", "")
+        if na and ("？" in na or "?" in na or "还是" in na or "要不要" in na):
+            decisions.append({"item": t.get("item", ""), "option_a": na, "option_b": ""})
+
+    if decisions:
+        parts.append("🎯 需要你选")
+        for d in decisions:
+            item = d.get("item", "")
+            oa = d.get("option_a", "")
+            ob = d.get("option_b", "")
+            if oa and ob:
+                parts.append(f"- {item}：{oa} vs {ob}，你选哪个？")
+            elif oa:
+                parts.append(f"- {item}：{oa}")
+        parts.append("")
+
+    # ---------- 📊 系统状态 ----------
+    # 优先用 LLM 的 system_status，fallback 到 status_note
+    sys_status = b.get("system_status", "") or b.get("status_note", "")
+    # 修复飞书链接域名
+    if sys_status:
+        sys_status = re.sub(
+            r'https?://feishu\.cn/(docx|base|wiki)/',
+            r'https://ccnq3wnum0kr.feishu.cn/\1/',
+            sys_status
+        )
+    parts.append(f"📊 系统状态")
+    parts.append(f"- {sys_status if sys_status else '一切正常'}")
+
+    msg = "\n".join(parts)
+
+    # 硬截断到 300 字（保留标题完整性）
+    if len(msg) > 300:
+        msg = msg[:297] + "..."
+
+    return msg
 
 
 def save_brief(result: Dict[str, Any], date: str) -> Path:
