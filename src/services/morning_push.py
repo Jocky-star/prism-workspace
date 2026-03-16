@@ -120,37 +120,20 @@ def get_tenant_access_token() -> str | None:
 
 
 def _text_to_post_content(text: str) -> dict:
-    """把 format_brief_message 输出的纯文本转成飞书 Interactive Card 格式。
+    """把 format_brief_message 输出的 markdown 转成飞书 Interactive Card 格式。
 
-    Interactive Card 支持 markdown（加粗、列表），比 post 格式更灵活。
-    结构：
+    v5: format_brief_message 已输出完整 markdown（含 **加粗**、列表等），
+    直接透传到 card 的 markdown element 即可。
     - header: 第一行作标题（蓝色）
-    - body: 一个 markdown element 包含剩余内容
+    - body: markdown element 包含剩余内容
     """
     lines = text.split("\n")
+    # 标题：取第一行，去掉 emoji 前缀
     title = lines[0].strip() if lines else "早安 Brief"
     body_lines = lines[1:] if len(lines) > 1 else []
 
-    # 把剩余内容拼成 markdown
-    # 段落标题（emoji 开头）→ **加粗**
-    # bullet 行（- 开头）→ 保留
-    # 普通行 → 保留
-    md_parts = []
-    SECTION_EMOJIS = ("📌", "🎯", "📊", "💭", "✅", "🔄", "📋", "💡", "📎")
-
-    for line in body_lines:
-        stripped = line.strip()
-        if not stripped:
-            md_parts.append("")
-            continue
-        # 段落标题加粗
-        is_section = any(stripped.startswith(e) for e in SECTION_EMOJIS) and not stripped.startswith("- ")
-        if is_section:
-            md_parts.append(f"**{stripped}**")
-        else:
-            md_parts.append(stripped)
-
-    body_md = "\n".join(md_parts).strip()
+    # 直接透传 markdown，飞书 card 原生支持 **加粗** 和列表
+    body_md = "\n".join(line for line in body_lines).strip()
 
     return {
         "elements": [
