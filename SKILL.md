@@ -257,7 +257,36 @@ output:
 schedule:
   cron: "0 6 * * *"
   description: "每天早上6点同步"
+
+# 插件携带的能力（Agent 自动注册）
+capabilities:
+  # 引用已有的 OpenClaw Skill
+  skills:
+    - name: oura-health-skill
+      source: clawhub
+      description: "Oura 健康数据查询和分析"
+  # 插件自带 MCP Server
+  mcp_servers:
+    - name: oura-mcp
+      command: "python3 mcp_server.py"
+      tools: [get_sleep, get_heart_rate, get_activity]
+  # 插件自带 Skill 目录
+  bundled_skills:
+    - path: skills/health-alert
+      description: "健康异常告警"
 ```
+
+### 能力声明（capabilities）
+
+插件可以携带三种能力，Agent 安装插件后**自动注册**，不需要用户手动配置：
+
+| 能力类型 | 说明 | 安装后效果 |
+|----------|------|------------|
+| `skills` | 引用 clawhub 上已有的 Skill | 自动 `npx skills install` |
+| `mcp_servers` | 插件自带 MCP Server | 自动注册到 OpenClaw MCP 配置 |
+| `bundled_skills` | 插件目录下的 Skill | 自动复制到 `~/.openclaw/skills/` |
+
+Agent 安装完插件后，可以运行 `python3 main.py capabilities` 查看所有已注册的能力。
 
 ### plugin.py 示例（Source）
 
