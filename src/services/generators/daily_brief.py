@@ -304,30 +304,31 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
 ## 输出结构
 输出 JSON，严格按下面的格式：
 {
-  "conclusions": [
-    "XXX项目研究完毕：它能做Y，建议你Z（一句话，含具体名称和结论）",
-    "XX任务已完成：结果是Y"
+  "key_conclusions": [
+    "XXX 已完成：具体结果是 Y，对你意味着 Z"
+  ],
+  "minor_updates": [
+    "XX 小进展：一句话说清楚"
   ],
   "decisions_needed": [
-    {"item": "事项名", "option_a": "A方案及优点", "option_b": "B方案及优点"}
+    {"item": "事项名", "option_a": "A方案（优点）", "option_b": "B方案（优点）"}
   ],
   "system_status": "一切正常",
   "deliveries": [{"title": "做了什么", "detail": "具体结果"}],
   "proactive": [{"insight": "注意到...", "action": "帮你做了...", "result": "结果"}],
-  "captured_intents": [{"quote": "用户说的话≤30字", "action_taken": "做了/还没做", "status": "done/in_progress/prepared"}],
-  "prepared_for_today": [{"title": "准备了什么", "content": "可直接用的内容"}],
-  "tracking": [{"item": "跟踪项", "status": "进展一句话", "next_action": "下一步"}]
+  "captured_intents": [{"quote": "用户说的话≤30字", "action_taken": "具体做了什么+结果", "status": "done/blocked/prepared"}],
+  "tracking": [{"item": "跟踪项", "status": "具体结论", "next_action": "下一步"}]
 }
 
 ## 字段规则
-- **conclusions**: 从 deliveries + intents + tracking 中提炼真正的结论。格式："X事项：结论是Y"。结合用户画像判断哪些对他最重要。
-- **decisions_needed**: 需要用户拍板的事，给A/B选项。能先做的先做，只有真正需要决策的才放这里。
+- **key_conclusions**: 最重要的 1-3 条结论，影响老板决策或需要他知道的大事。每条必须包含具体事实和 so what。格式："X事项：查了/做了Y，结论是Z"。不写"需确认""待跟进"——如果你不知道结论，先去查再写。
+- **minor_updates**: 次要但值得一提的进展，3-5 条。一句话点到即止。
+- **decisions_needed**: 真正需要老板拍板的，给清晰的 A/B 选项。如果你能先做调研再问，就先做。
 - **system_status**: 一行，"一切正常"或具体异常。
 - **deliveries**: 只从 action_log 有记录的生成，没有就空数组。
 - **proactive**: 只从 action_log 有记录的生成，没有就空数组。
-- **captured_intents**: 从最近对话中提取用户表达的意图/需求，结合 action_log 判断是否已跟进。
-- **prepared_for_today**: 有可直接用的交付物才写。
-- **tracking**: 基于用户高优先级意图和近期对话，汇报进展。结论性描述，不写"进行中"。
+- **captured_intents**: 从最近对话中提取用户表达的意图/需求。action_taken 必须写具体做了什么+结果，不能写"已开始"。
+- **tracking**: 基于用户高优先级意图，汇报具体进展。不写"进行中"——写清楚到了哪一步、卡在什么地方。
 
 ## 生成要求
 1. 基于对老板的长期理解（画像、价值观、工作风格），判断哪些信息对他有价值
@@ -479,37 +480,39 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
         title_date = ""
     parts.append(f"☀️ 早安 Brief{' | ' + title_date if title_date else ''}\n")
 
-    # ---------- 📌 结论速览 ----------
-    # 优先用 LLM 生成的 conclusions 字段
-    conclusions: List[str] = b.get("conclusions", [])
+    # ---------- 🔴 重要结论 ----------
+    key_conclusions: List[str] = b.get("key_conclusions", [])
+    # 兼容旧版 conclusions 字段
+    if not key_conclusions:
+        key_conclusions = b.get("conclusions", [])
 
-    # 若 LLM 没输出 conclusions，从 deliveries/intents/tracking 中拼凑
-    if not conclusions:
-        for d in b.get("deliveries", []):
-            title = d.get("title", "")
-            detail = d.get("detail", "")
-            if title and detail:
-                conclusions.append(f"{title}：{detail}")
-            elif title:
-                conclusions.append(title)
+    if key_conclusions:
+        parts.append("🔴 重要")
+        for c in key_conclusions:
+            parts.append(f"- {c}")
+        parts.append("")
+
+    # ---------- 🔵 常规跟进 ----------
+    minor_updates: List[str] = b.get("minor_updates", [])
+    # fallback: 从 tracking/intents 中拼
+    if not minor_updates:
+        for t in b.get("tracking", []):
+            item = t.get("item", "")
+            status = t.get("status", "")
+            boring = {"进行中", "已开始", "进行中...", "开始了", "还在进行", "需确认"}
+            if item and status and status not in boring:
+                minor_updates.append(f"{item}：{status}")
         for i in b.get("captured_intents", []):
             if i.get("status") == "done":
                 quote = i.get("quote", "")[:30]
                 action = i.get("action_taken", "")
                 if quote and action:
-                    conclusions.append(f"{quote} → {action}")
-        for t in b.get("tracking", []):
-            item = t.get("item", "")
-            status = t.get("status", "")
-            # 过滤掉空洞进展描述
-            boring = {"进行中", "已开始", "进行中...", "开始了", "还在进行"}
-            if item and status and status not in boring:
-                conclusions.append(f"{item}：{status}")
+                    minor_updates.append(f"{quote} → {action}")
 
-    if conclusions:
-        parts.append("📌 结论速览")
-        for c in conclusions:
-            parts.append(f"- {c}")
+    if minor_updates:
+        parts.append("🔵 跟进")
+        for m in minor_updates:
+            parts.append(f"- {m}")
         parts.append("")
 
     # ---------- 🎯 需要你选 ----------
