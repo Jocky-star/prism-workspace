@@ -2,7 +2,30 @@
 
 从多数据源理解用户（录音/对话/摄像头/行为），生成个性化服务（晨间 Brief/意图追踪/情绪关怀/设备控制）。
 
-## 什么时候使用
+## 首次安装（Agent 执行）
+
+如果是全新安装，按以下步骤操作：
+
+```bash
+# 1. clone 项目
+git clone https://github.com/Jocky-star/prism-workspace.git
+cd prism-workspace
+
+# 2. 初始化配置
+python3 main.py setup
+# → 会自动复制 config.example.yaml → config.yaml
+# → 告知需要填写的字段
+
+# 3. 编辑 config.yaml，填入飞书和 LLM 配置
+
+# 4. 验证配置
+python3 main.py status
+
+# 5. 预览第一份 Brief
+python3 main.py brief --dry-run
+```
+
+## 什么时候使用（已安装后）
 
 - 需要生成用户的晨间简报、会议洞察、意图追踪
 - 需要从对话/录音中提取用户偏好并自动执行（如控制台灯）

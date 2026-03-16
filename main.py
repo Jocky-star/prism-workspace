@@ -14,6 +14,7 @@ WORKSPACE = Path(__file__).resolve().parent
 CONFIG_PATH = WORKSPACE / "config.yaml"
 CONFIG_EXAMPLE = WORKSPACE / "config.example.yaml"
 
+
 # ── 简易 YAML 读写（零依赖）──────────────────────────────
 
 def _read_yaml(path: Path) -> dict:
@@ -41,110 +42,43 @@ def _read_yaml(path: Path) -> dict:
     return data
 
 
-def _write_yaml(path: Path, data: dict):
-    lines = ["# Prism 配置文件（由 main.py setup 生成）\n"]
-    for section, values in data.items():
-        if isinstance(values, dict):
-            lines.append(f"{section}:")
-            for k, v in values.items():
-                lines.append(f'  {k}: "{v}"')
-            lines.append("")
-        else:
-            lines.append(f'{section}: "{values}"')
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 # ── 配置引导 ─────────────────────────────────────────────
 
 def cmd_setup():
-    print("""
-🌟 欢迎使用 Prism — 你的个人智能秘书
+    """配置引导：复制 config.example.yaml 到 config.yaml，告知需要填写的字段。"""
+    if CONFIG_PATH.exists():
+        print(f"\n✅ config.yaml 已存在：{CONFIG_PATH}")
+        print("\n需要修改配置？直接编辑 config.yaml，或删除后重新运行 setup。")
+        print("\n当前状态：")
+        cmd_status()
+        return
 
-   Prism 通过分析你的录音、对话和行为数据，
-   理解你的生活和工作，主动帮你做事。
+    if not CONFIG_EXAMPLE.exists():
+        print("❌ 未找到 config.example.yaml，请确认项目完整 clone。")
+        sys.exit(1)
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-""")
-    config = {}
-
-    # 1. 飞书
-    print("1️⃣  飞书应用配置")
-    print("   Prism 通过飞书推送每日 Brief。")
-    print("   获取方式：https://open.feishu.cn → 创建应用 → 凭证信息\n")
-    app_id = input("   App ID: ").strip()
-    app_secret = input("   App Secret: ").strip()
-
-    print("\n2️⃣  推送目标")
-    print("   你的飞书 Open ID（接收 Brief 的用户）")
-    print("   获取方式：飞书管理后台 → 通讯录 → 你的账号\n")
-    open_id = input("   Open ID: ").strip()
-
-    print("\n3️⃣  飞书租户域名")
-    print("   格式：xxx.feishu.cn（从飞书文档链接中可看到）\n")
-    tenant = input("   租户域名 [留空跳过]: ").strip() or ""
-
-    config["feishu"] = {
-        "app_id": app_id,
-        "app_secret": app_secret,
-        "target_user_ids": open_id,
-    }
-    if tenant:
-        config["feishu"]["tenant_domain"] = tenant
-
-    # 2. LLM
-    print("\n4️⃣  LLM 配置")
-    print("   Prism 需要 LLM 来理解数据和生成 Brief。")
-    print("   支持任何 OpenAI 兼容 API。\n")
-    api_base = input("   API Base URL [https://api.openai.com/v1]: ").strip() or "https://api.openai.com/v1"
-    api_key = input("   API Key: ").strip()
-    model = input("   Model [claude-sonnet-4-6]: ").strip() or "claude-sonnet-4-6"
-
-    config["llm"] = {
-        "api_base": api_base,
-        "api_key": api_key,
-        "model": model,
-    }
-
-    # 3. Brief
-    config["brief"] = {
-        "push_time": "08:30",
-        "max_chars": "0",
-    }
-
-    # 验证飞书凭证
-    if app_id and app_secret:
-        print("\n⏳ 验证飞书凭证...", end=" ")
-        try:
-            import urllib.request
-            req = urllib.request.Request(
-                "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-                data=json.dumps({"app_id": app_id, "app_secret": app_secret}).encode(),
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                result = json.loads(resp.read())
-            if result.get("code") == 0:
-                print("✅ 飞书凭证有效")
-            else:
-                print(f"⚠️ 飞书返回错误：{result.get('msg', '未知')}")
-        except Exception as e:
-            print(f"⚠️ 验证失败：{e}")
-
-    # 写配置
-    _write_yaml(CONFIG_PATH, config)
-    print(f"\n✅ 配置已保存到 {CONFIG_PATH.name}")
-
+    import shutil
+    shutil.copy(CONFIG_EXAMPLE, CONFIG_PATH)
+    print(f"\n✅ 已从模板创建 config.yaml")
     print("""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 请编辑 config.yaml，填入以下必填项：
 
-🚀 下一步：
-   python3 main.py status            查看系统状态
-   python3 main.py brief --dry-run   预览第一份 Brief
-   python3 main.py brief             生成并推送到飞书
+   【LLM 配置】
+   llm.endpoint   — LLM API 地址（兼容 OpenAI 格式）
+   llm.api_key    — API Key
 
-   设置每日自动推送：
-   crontab -e
-   30 8 * * * cd {WORKSPACE} && python3 main.py brief >> logs/brief.log 2>&1
+   【飞书 Bot 配置】
+   feishu.app_id              — 飞书应用 App ID
+   feishu.app_secret          — 飞书应用 App Secret
+   feishu.target_user_open_id — 推送目标用户的 Open ID
+
+获取飞书配置：https://open.feishu.cn → 创建自建应用 → 凭证与基础信息
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+填完之后运行：
+   python3 main.py status          验证配置
+   python3 main.py brief --dry-run 预览第一份 Brief
 """)
 
 
@@ -244,7 +178,20 @@ def cmd_status():
 
 def cmd_brief(dry_run=False, date=None):
     if not CONFIG_PATH.exists():
-        print("⚠️ 未找到 config.yaml，请先运行 python3 main.py setup")
+        if dry_run:
+            print("""
+⚠️ 未找到 config.yaml，无法预览 Brief。
+
+请先完成配置：
+   python3 main.py setup   复制配置模板
+   # 编辑 config.yaml，填入飞书和 LLM 配置
+   python3 main.py status  验证配置
+
+配置完成后再运行：
+   python3 main.py brief --dry-run
+""")
+        else:
+            print("⚠️ 未找到 config.yaml，请先运行 python3 main.py setup")
         sys.exit(1)
 
     if date is None:
@@ -271,7 +218,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 子命令：
-  setup              交互式配置引导
+  setup              初始化配置文件
   status             查看系统状态
   brief              生成并推送 Brief
   brief --dry-run    预览 Brief（不推送）
@@ -281,7 +228,7 @@ def main():
     )
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("setup", help="交互式配置引导")
+    sub.add_parser("setup", help="初始化配置文件")
     sub.add_parser("status", help="查看系统状态")
 
     brief_p = sub.add_parser("brief", help="生成并推送 Brief")
@@ -301,7 +248,27 @@ def main():
         if CONFIG_PATH.exists():
             cmd_status()
         else:
-            cmd_setup()
+            print("""
+🌟 Prism — 你的个人智能秘书
+
+首次使用需要配置。请按以下步骤操作：
+
+1. 复制配置文件
+   cp config.example.yaml config.yaml
+
+2. 编辑 config.yaml，填入：
+   • 飞书 App ID 和 App Secret（从 open.feishu.cn 获取）
+   • 飞书 Open ID（推送目标用户）
+   • LLM API 地址和 Key
+
+3. 验证配置
+   python3 main.py status
+
+4. 预览第一份 Brief
+   python3 main.py brief --dry-run
+
+详细说明见 README.md
+""")
     else:
         parser.print_help()
 
