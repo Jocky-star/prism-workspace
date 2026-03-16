@@ -93,21 +93,44 @@ def cmd_status():
     feishu = cfg.get("feishu", {})
     llm = cfg.get("llm", {})
 
+    # 占位符检测
+    _PH = {"your", "xxx", "example", "placeholder", "here", "填入", "替换"}
+    def _is_real(val: str) -> bool:
+        if not val:
+            return False
+        v = val.lower().replace("-", "").replace("_", "")
+        return not any(p in v for p in _PH)
+
     app_id = feishu.get("app_id", "")
-    if app_id:
+    if _is_real(app_id):
         print(f"   飞书应用: ✅ 已配置 ({app_id[:12]}...)")
     else:
-        print("   飞书应用: ❌ 未配置 → python3 main.py setup")
+        print("   飞书应用: ❌ 未配置 → 编辑 config.yaml 填入 feishu.app_id")
 
-    targets = feishu.get("target_user_ids", "")
-    n_targets = len([t for t in targets.split(",") if t.strip()]) if targets else 0
-    print(f"   推送目标: {'✅' if n_targets else '❌'} {n_targets} 个用户")
+    target_id = feishu.get("target_user_open_id", "")
+    if not target_id:
+        # 兼容旧格式
+        targets_str = feishu.get("target_user_ids", "")
+        target_ids = [t.strip() for t in targets_str.split(",") if t.strip()] if targets_str else []
+    else:
+        target_ids = [t.strip() for t in target_id.split(",") if t.strip()]
+    real_targets = [t for t in target_ids if _is_real(t)]
+    print(f"   推送目标: {'✅' if real_targets else '❌'} {len(real_targets)} 个用户")
 
-    model = llm.get("model", "未配置")
-    print(f"   LLM: {'✅' if llm.get('api_key') else '❌'} {model}")
+    api_key = llm.get("api_key", "")
+    model = llm.get("default_model", "") or llm.get("model", "")
+    if _is_real(api_key) and _is_real(model):
+        print(f"   LLM: ✅ {model}")
+    elif _is_real(api_key):
+        print(f"   LLM: ⚠️ API Key 已填，模型未配置")
+    else:
+        print("   LLM: ❌ 未配置 → 编辑 config.yaml 填入 llm.api_key")
 
-    tenant = feishu.get("tenant_domain", "未配置")
-    print(f"   租户域名: {tenant}")
+    tenant = feishu.get("tenant_domain", "")
+    if _is_real(tenant):
+        print(f"   租户域名: ✅ {tenant}")
+    else:
+        print("   租户域名: ⚠️ 未配置（可选，用于修复飞书链接）")
 
     # 数据
     print("\n📁 数据")
@@ -167,7 +190,7 @@ def cmd_status():
     print("\n💡 建议")
     if not app_id:
         print("   • 运行 python3 main.py setup 配置飞书和 LLM")
-    if n_targets == 0:
+    if not real_targets:
         print("   • 配置飞书推送目标（Open ID）")
     print("   • 确保录音数据定期同步到 data/daily-reports/")
     print("   • 设置 cron 每日自动推送 Brief")
