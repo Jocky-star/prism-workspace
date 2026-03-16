@@ -74,94 +74,229 @@ def _load_todo_context() -> str:
     return ""
 
 
-def _build_data_summary(data: Dict[str, Any]) -> str:
-    """Build comprehensive data summary from all sources."""
+def _build_intelligence_summary(data: Dict[str, Any]) -> str:
+    """从 intelligence 数据源提取'我对你的长期理解'摘要。"""
+    intel = data.get("intelligence", {})
+    if not intel.get("available"):
+        return "（暂无长期理解数据）"
+
     parts: List[str] = []
 
-    # Audio: detailed scene-by-scene
+    # 用户画像
+    profile = intel.get("profile", {})
+    if profile:
+        prefs = profile.get("preferences", {})
+        top_topics = prefs.get("top_topics", [])[:6]
+        values = prefs.get("values", [])[:5]
+        comm_style = prefs.get("communication_style", "")
+        schedule = profile.get("schedule", {})
+        parts.append(
+            f"【用户画像】\n"
+            f"关注领域: {', '.join(top_topics)}\n"
+            f"核心价值观: {', '.join(values)}\n"
+            f"沟通风格: {comm_style}\n"
+            f"作息: 起床 {schedule.get('wake_up_median','')} / 睡觉 {schedule.get('sleep_median','')} / 日均工作 {schedule.get('work_hours_avg','')}h"
+        )
+
+    # 行为模式（只提关键信息）
+    patterns = intel.get("patterns", {})
+    if patterns:
+        peak_hours = []
+        routine = patterns.get("daily_routine", {}).get("weekday", {})
+        for hour_range, info in routine.items():
+            if info.get("top_activity") in ("work", "meeting") and info.get("avg_minutes", 0) > 20:
+                peak_hours.append(f"{hour_range}时({info['top_activity']})")
+        if peak_hours:
+            parts.append(f"【工作高峰】{', '.join(peak_hours[:4])}")
+
+    # 活跃意图（高优先级）
+    intents = intel.get("intents", {})
+    active_intents = intents.get("active", []) if intents else []
+    high_priority = [i for i in active_intents if i.get("seriousness", 0) >= 4][:8]
+    if high_priority:
+        intent_texts = [f"- [{i.get('type','?')}] {i.get('text','')[:60]}" for i in high_priority]
+        parts.append("【高优先级待跟进】\n" + "\n".join(intent_texts))
+
+    # 最近洞察（最新5条）
+    insights = intel.get("insights", [])
+    if insights:
+        recent_insights = [i for i in insights if i.get("priority", 0) >= 3][-5:]
+        if recent_insights:
+            insight_texts = [f"- {i.get('text','')[:80]}" for i in recent_insights]
+            parts.append("【近期洞察】\n" + "\n".join(insight_texts))
+
+    return "\n\n".join(parts) if parts else "（intelligence 数据存在但解析为空）"
+
+
+def _build_conversation_summary(data: Dict[str, Any]) -> str:
+    """从 conversation 数据源提取'最近你关注什么'的直接证据。"""
+    conv = data.get("conversation", {})
+    if not conv.get("available"):
+        return "（暂无近期对话数据）"
+
+    parts: List[str] = []
+
+    # 近期用户聊天消息（最重要的直接证据）
+    recent_msgs = conv.get("recent_chat_messages", [])
+    if recent_msgs:
+        # 按日期分组，只取最近3天，每天最多10条
+        from collections import defaultdict
+        by_date: Dict[str, List] = defaultdict(list)
+        for m in recent_msgs:
+            d = (m.get("date") or m.get("timestamp", ""))[:10]
+            by_date[d].append(m)
+        msg_parts: List[str] = []
+        for d in sorted(by_date.keys(), reverse=True)[:3]:
+            msgs = by_date[d][-10:]
+            lines = [f"  [{m.get('time','')[0:5] or m.get('timestamp','')[11:16]}] {m.get('text','')[:150]}" for m in msgs]
+            msg_parts.append(f"[{d}]\n" + "\n".join(lines))
+        parts.append("【近期对话（用户原话）】\n" + "\n\n".join(msg_parts))
+
+    # 记忆日志（最近2天的，提供上下文）
+    memories = conv.get("recent_memories", [])
+    if memories:
+        recent_2 = memories[:2]  # 最近2天
+        mem_parts = []
+        for m in recent_2:
+            snippet = m.get("content", "")
+            # 从记忆日志中提取有信息量的片段（避免纯模板内容）
+            lines = [l.strip() for l in snippet.split("\n") if l.strip() and not l.startswith("#") and len(l.strip()) > 10]
+            if lines:
+                mem_parts.append(f"[{m['date']}] " + " / ".join(lines[:5]))
+        if mem_parts:
+            parts.append("【近期记忆摘要】\n" + "\n".join(mem_parts))
+
+    # 用户反馈偏好（有明确态度的才有价值）
+    feedback = conv.get("feedback", {})
+    adopted = feedback.get("adopted_suggestions", [])
+    ignored = feedback.get("ignored_suggestions", [])
+    pref_model = feedback.get("preference_model", {})
+
+    if adopted or ignored or pref_model:
+        fb_parts: List[str] = []
+        if adopted:
+            adopted_texts = [f"  ✓ {s.get('content','')[:60]} → 回应: {s.get('user_response','')}" for s in adopted[-5:]]
+            fb_parts.append("用户接受的建议:\n" + "\n".join(adopted_texts))
+        if ignored:
+            ignored_texts = [f"  ✗ {s.get('content','')[:60]}" for s in ignored[-3:]]
+            fb_parts.append("用户忽略的建议（以后少做）:\n" + "\n".join(ignored_texts))
+        if pref_model:
+            liked = pref_model.get("liked_categories", [])
+            disliked = pref_model.get("disliked_categories", [])
+            if liked or disliked:
+                fb_parts.append(f"偏好模型: 喜欢={liked}, 不喜欢={disliked}")
+        parts.append("【用户反馈偏好】\n" + "\n".join(fb_parts))
+
+    return "\n\n".join(parts) if parts else "（对话数据存在但解析为空）"
+
+
+def _build_action_log_summary(data: Dict[str, Any]) -> str:
+    """从 action_log 数据源提取'昨天实际完成的事'的事实摘要。"""
+    al = data.get("action_log", {})
+    if not al.get("available"):
+        # 也尝试从旧的 action_log 模块读取
+        return "（无行动日志数据）"
+
+    parts: List[str] = []
+
+    yesterday_actions = al.get("yesterday_actions", [])
+    today_actions = al.get("today_actions", [])
+
+    if yesterday_actions:
+        lines = [f"  [{a.get('category','?')}] {a.get('title','')} — {a.get('detail','')[:80]}" for a in yesterday_actions[-20:]]
+        parts.append("【昨日行动】\n" + "\n".join(lines))
+
+    if today_actions:
+        lines = [f"  [{a.get('category','?')}] {a.get('title','')} — {a.get('detail','')[:80]}" for a in today_actions[-10:]]
+        parts.append("【今日早间行动】\n" + "\n".join(lines))
+
+    if not parts:
+        return "（行动日志为空 — deliveries 和 proactive 应为空数组）"
+
+    return "\n\n".join(parts)
+
+
+def _build_supplementary_summary(data: Dict[str, Any]) -> str:
+    """构建补充数据摘要（audio/chat/vision/habit/weather）。"""
+    parts: List[str] = []
+
+    # Audio: 录音场景
     audio = data.get("audio", {})
     if audio.get("available"):
         scenes_text = []
-        for sc in audio.get("scenes", []):
+        for sc in (audio.get("scenes", []) or [])[:5]:
             summary = sc.get("summary", "")
             activity = sc.get("activity", "unknown")
             time = sc.get("start_time", "")
             quotes = [q.get("text", "") for q in sc.get("key_quotes", []) if q.get("text")]
-            participants = sc.get("participants", [])
-            scenes_text.append(
-                f"[{time}] ({activity}) {summary}\n"
-                f"  参与者: {participants}\n"
-                f"  关键原话: {quotes[:3]}"
-            )
-        parts.append("=== 录音场景 ===\n" + "\n".join(scenes_text))
+            scenes_text.append(f"[{time}]({activity}) {summary} | 原话: {quotes[:2]}")
+        if scenes_text:
+            parts.append("【录音场景】\n" + "\n".join(scenes_text))
 
-        # Macro frames
-        for mf in audio.get("macro_frames", []):
-            frame_type = mf.get("frame_type", "")
+        for mf in (audio.get("macro_frames", []) or [])[:3]:
             topics = mf.get("key_topics", [])
             mood = mf.get("mood_or_tone", "")
             outcomes = mf.get("outcomes", [])
-            parts.append(
-                f"[宏观-{frame_type}] 话题={topics}, 情绪={mood}, 成果={outcomes}"
-            )
-
-    # Chat: user's actual messages
-    chat = data.get("chat", {})
-    if chat.get("available"):
-        user_msgs = [m for m in chat.get("messages", []) if m.get("source") == "chat"]
-        if user_msgs:
-            chat_texts = [f"[{m.get('timestamp','')[11:16]}] {m.get('text','')[:200]}" for m in user_msgs[:30]]
-            parts.append("=== 飞书对话 ===\n" + "\n".join(chat_texts))
+            parts.append(f"[宏观] 话题={topics}, 情绪={mood}, 成果={outcomes}")
 
     # Vision
     vision = data.get("vision", {})
     if vision.get("available") and vision.get("observation_count", 0) > 0:
         parts.append(
-            f"=== 摄像头 ===\n"
-            f"观察{vision.get('observation_count',0)}次, "
-            f"表情={vision.get('moods_seen',[])}"
+            f"【摄像头】观察{vision.get('observation_count',0)}次, 状态={vision.get('moods_seen',[])}"
         )
 
     # Habit
     habit = data.get("habit", {})
     if habit.get("available"):
         rules = habit.get("behavior_rules", {})
-        rule_texts = [r.get("rule", "") for r in rules.get("rules", [])[:5]]
-        parts.append(f"=== 行为模式 ===\n规则: {rule_texts}")
+        rule_texts = [r.get("rule", "") for r in (rules.get("rules", []) or [])[:3]]
+        if rule_texts:
+            parts.append(f"【行为规律】{rule_texts}")
 
-    return "\n\n".join(parts)
+    # Weather
+    weather = data.get("weather", {})
+    if weather.get("available"):
+        wd = weather.get("data", {})
+        temp = wd.get("temperature", wd.get("temp", ""))
+        desc = wd.get("description", wd.get("condition", ""))
+        if temp or desc:
+            parts.append(f"【天气】{desc} {temp}")
+
+    return "\n".join(parts) if parts else "（无补充数据）"
+
+
+def _build_data_summary(data: Dict[str, Any]) -> str:
+    """Build comprehensive data summary from all sources.
+
+    已被细分为4个专项函数，此函数保留向后兼容，返回完整摘要。
+    """
+    return _build_supplementary_summary(data)
 
 
 def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
     """
     Generate action-oriented daily brief.
     
-    核心原则：Brief 只汇报真正做过的事情。
-    - action_log 有记录 → 直接写进 Brief，不需要 LLM 编
-    - action_log 为空 → deliveries/proactive 为空，不编造
-    - LLM 只负责：从录音/对话中提取 captured_intents 和 tracking
+    核心原则：Brief 只汇报真正做过的事情，基于对用户的长期理解生成有价值的内容。
+    - intelligence 数据：了解用户是谁，他关注什么
+    - conversation 数据：最近他在关注/讨论什么
+    - action_log：系统昨天实际做了什么（真实依据）
+    - audio/chat/vision：补充信号
     """
     reg = DataSourceRegistry()
     data = reg.get_all_data(date)
-    
-    data_summary = _build_data_summary(data)
-    memory_context = _load_memory_context(date)
-    todo_context = _load_todo_context()
-    profile = _load_user_profile()
-    
-    # 读取行动日志 — Brief 的真实依据
-    try:
-        from src.services.action_log import get_actions, get_actions_summary
-        actions = get_actions(date)
-        action_summary = get_actions_summary(date)
-    except Exception:
-        actions = []
-        action_summary = ""
 
-    system_prompt = """你是一个私人秘书，每天早上给老板做一句话简报。
+    # 分层构建数据摘要
+    intelligence_summary = _build_intelligence_summary(data)
+    conversation_summary = _build_conversation_summary(data)
+    action_log_summary = _build_action_log_summary(data)
+    supplementary_summary = _build_supplementary_summary(data)
+
+    system_prompt = """你是私人秘书星星。基于对老板的长期理解和最近的互动，生成今日简报。
 
 ## 铁律
-1. **只写结论，不写过程** — "发现了X项目，它能做Y，对你的价值是Z"，不写"已开始研究X"
+1. **只写结论，不写过程** — "发现了X，它能做Y，对你的价值是Z"，不写"已开始研究X"
 2. **每条信息必须回答 so what** — 没结论的不写，宁可空着
 3. **只汇报真实发生的事** — 行动日志里有的才写 deliveries/proactive，没有就空数组
 4. **300字以内** — 超过就裁，留最重要的
@@ -185,34 +320,37 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
 }
 
 ## 字段规则
-- **conclusions**: 从 deliveries + intents + tracking 中提炼真正的结论。格式："X事项：结论是Y"。没结论的不写。
-- **decisions_needed**: 需要用户拍板的事，给A/B选项而不是"等待中"。能先做的先做，只有真正需要决策的才放这里。
+- **conclusions**: 从 deliveries + intents + tracking 中提炼真正的结论。格式："X事项：结论是Y"。结合用户画像判断哪些对他最重要。
+- **decisions_needed**: 需要用户拍板的事，给A/B选项。能先做的先做，只有真正需要决策的才放这里。
 - **system_status**: 一行，"一切正常"或具体异常。
-- **deliveries**: 只从 action_log category=delivery 生成，没有就空数组。
-- **proactive**: 只从 action_log category=proactive 生成，没有就空数组。
-- **captured_intents**: 从录音/对话提取，若 action_log 有 intent_followup 对应记录则 status=done。
-- **prepared_for_today**: 有可直接用的交付物才写，飞书文档必须含完整链接。
-- **tracking**: 长线事项，状态必须是结论性的（"完成了X"），不写"进行中"。
+- **deliveries**: 只从 action_log 有记录的生成，没有就空数组。
+- **proactive**: 只从 action_log 有记录的生成，没有就空数组。
+- **captured_intents**: 从最近对话中提取用户表达的意图/需求，结合 action_log 判断是否已跟进。
+- **prepared_for_today**: 有可直接用的交付物才写。
+- **tracking**: 基于用户高优先级意图和近期对话，汇报进展。结论性描述，不写"进行中"。
 
-⚠️ 宁可 conclusions 只有1条，也绝不编造。Brief 的信任感 > 内容丰富度。
-"""
+## 生成要求
+1. 基于对老板的长期理解（画像、价值观、工作风格），判断哪些信息对他有价值
+2. 结合最近对话中他关注的事情，给出进展结论
+3. 如果有他之前的反馈（比如忽略了某类建议），这次要体现改进（不再重复）
+4. 所有结论都要有具体内容，不是空洞的状态描述
+5. 300字以内，宁缺勿滥
 
-    # 行动日志是 Brief 的核心依据
-    action_log_text = action_summary if action_summary else "（无行动记录 — deliveries 和 proactive 应为空数组）"
-    
-    user_prompt = f"""=== 行动日志（真正执行过的，如实汇报）===
-{action_log_text}
+⚠️ 宁可 conclusions 只有1条，也绝不编造。Brief 的信任感 > 内容丰富度。"""
 
-=== 多源数据（用于提取 intents 和 tracking）===
-{data_summary[:6000]}
+    user_prompt = f"""## 你对老板的理解
+{intelligence_summary}
 
-=== 当天记忆日志 ===
-{memory_context[:2000]}
+## 最近的对话和反馈
+{conversation_summary[:3000]}
 
-=== 当前待办 ===
-{todo_context[:1000]}
+## 昨天实际完成的事
+{action_log_summary}
 
-生成晨间简报。deliveries 和 proactive 只能基于行动日志，不能编造。"""
+## 补充数据
+{supplementary_summary[:2000]}
+
+生成今日晨间简报。deliveries 和 proactive 只能基于行动日志，不能编造。"""
 
     if dry_run:
         brief_content = {
@@ -254,7 +392,7 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
                 brief_content = {"raw_response": raw_response[:500], "parse_error": True}
 
     result = {
-        "generator": "daily_brief_v2",
+        "generator": "daily_brief_v3",
         "date": date,
         "generated_at": datetime.now().isoformat(),
         "dry_run": dry_run,
