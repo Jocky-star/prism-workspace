@@ -3,8 +3,15 @@ Shared LLM client for service generators.
 
 配置优先级：
   1. 环境变量 LLM_BASE_URL + LLM_API_KEY + LLM_MODEL
-  2. ~/.openclaw/agents/main/agent/models.json (litellm provider, 兼容现有环境)
-  3. 报错提示配置方法
+  2. ~/.openclaw/agents/main/agent/models.json (litellm provider，兼容现有环境)
+  3. config.yaml 的 llm.model（只影响 model 名称，不影响 endpoint）
+  4. 报错提示配置方法
+
+快速开始（新用户）：
+  export LLM_BASE_URL=https://your-api-endpoint/v1
+  export LLM_API_KEY=your-api-key
+  export LLM_MODEL=claude-haiku-4-5-20251001
+  python3 src/services/morning_push.py
 """
 
 from __future__ import annotations
@@ -19,18 +26,29 @@ import urllib.error
 
 MODELS_CONFIG = Path.home() / ".openclaw" / "agents" / "main" / "agent" / "models.json"
 
-# 通用默认 model（不带 pa/ 前缀，新用户友好）
-DEFAULT_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5-20251001")
+
+def _get_default_model() -> str:
+    """从 config 读取默认模型名称（延迟导入，避免循环依赖）。"""
+    # 环境变量最高优先
+    env_val = os.environ.get("LLM_MODEL", "")
+    if env_val:
+        return env_val
+
+    # 再从 config.yaml 读
+    try:
+        from src.services.config import get_llm_model
+        model = get_llm_model()
+        if model and model != "auto":
+            return model
+    except ImportError:
+        pass
+
+    return "claude-haiku-4-5-20251001"
 
 
 def _load_api_config() -> Dict[str, Any]:
-    """
-    Load API config following priority:
-    1. Environment variables: LLM_BASE_URL + LLM_API_KEY
-    2. models.json litellm provider (legacy/current environment)
-    3. Raise with helpful error message
-    """
-    # Priority 1: Environment variables
+    """加载 API 配置，按优先级：环境变量 → models.json → 报错提示。"""
+    # 优先级 1：环境变量
     base_url = os.environ.get("LLM_BASE_URL", "").rstrip("/")
     api_key = os.environ.get("LLM_API_KEY", "")
     if base_url and api_key:
@@ -38,10 +56,10 @@ def _load_api_config() -> Dict[str, Any]:
             "base_url": base_url,
             "api_key": api_key,
             "headers": {},
-            "model_prefix": "",  # env var users provide full model name
+            "model_prefix": "",  # 环境变量用户直接提供完整 model 名
         }
 
-    # Priority 2: models.json (litellm provider)
+    # 优先级 2：models.json（litellm provider）
     if MODELS_CONFIG.exists():
         try:
             with open(MODELS_CONFIG, encoding="utf-8") as f:
@@ -50,7 +68,7 @@ def _load_api_config() -> Dict[str, Any]:
             pbase = provider.get("baseUrl", "").rstrip("/")
             pkey = provider.get("apiKey", "")
             if pbase and pkey:
-                # Detect model prefix from available models
+                # 从已有模型列表推断前缀（如 "pa/"）
                 models = provider.get("models", [])
                 model_ids = [m["id"] if isinstance(m, dict) else m for m in models]
                 prefix = ""
@@ -60,19 +78,20 @@ def _load_api_config() -> Dict[str, Any]:
                     "base_url": pbase,
                     "api_key": pkey,
                     "headers": provider.get("headers", {}),
-                    "model_prefix": prefix,  # e.g. "pa/" for litellm
+                    "model_prefix": prefix,  # 例如 "pa/"
                 }
         except Exception:
-            pass  # Fall through to error
+            pass
 
-    # Priority 3: Error with helpful message
+    # 优先级 3：报错并给出配置指引
     raise RuntimeError(
-        "LLM 未配置。请设置环境变量：\n"
+        "LLM 未配置。请选择以下任意一种方式：\n\n"
+        "方式一（环境变量，推荐新用户）：\n"
         "  export LLM_BASE_URL=https://your-api-endpoint/v1\n"
         "  export LLM_API_KEY=your-api-key\n"
-        "  export LLM_MODEL=claude-haiku-4-5-20251001  # 可选，默认此值\n"
-        "\n"
-        "或者确保 ~/.openclaw/agents/main/agent/models.json 存在且包含 litellm provider 配置。"
+        "  export LLM_MODEL=claude-haiku-4-5-20251001\n\n"
+        "方式二（OpenClaw 已安装用户）：\n"
+        "  确保 ~/.openclaw/agents/main/agent/models.json 包含 litellm provider 配置\n"
     )
 
 
@@ -84,14 +103,21 @@ def llm_complete(
     temperature: float = 0.7,
     dry_run: bool = False,
 ) -> str:
-    """
-    Call the LLM and return the assistant message text.
-    In dry_run mode returns a placeholder string without making API calls.
+    """调用 LLM 并返回 assistant 的回复文本。
 
-    model: 覆盖默认 model。如果使用 models.json 环境，可传入带前缀的 model 名。
-           如果使用环境变量，直接传 model 名即可。
+    Args:
+        prompt: 用户消息
+        system: 系统提示词（可选）
+        model: 覆盖默认 model。使用 models.json 环境时可传带前缀的 model 名；
+               使用环境变量时直接传 model 名。
+        max_tokens: 最大生成 token 数
+        temperature: 采样温度
+        dry_run: True 时不实际调用 API，返回占位符字符串
+
+    Returns:
+        LLM 返回的文本内容
     """
-    effective_model = model or DEFAULT_MODEL
+    effective_model = model or _get_default_model()
 
     if dry_run:
         return f"[DRY-RUN: would call {effective_model} with {len(prompt)} chars prompt]"
@@ -100,8 +126,8 @@ def llm_complete(
     base_url = cfg["base_url"]
     api_key = cfg["api_key"]
     extra_headers = cfg["headers"]
-    
-    # Auto-add model prefix if needed (e.g. "pa/" for litellm provider)
+
+    # 自动添加 model 前缀（如 "pa/" for litellm provider）
     prefix = cfg.get("model_prefix", "")
     if prefix and not effective_model.startswith(prefix):
         effective_model = prefix + effective_model
@@ -139,7 +165,6 @@ def llm_complete(
 
 
 if __name__ == "__main__":
-    # Quick sanity test: show config source and optionally call LLM
     import argparse
     parser = argparse.ArgumentParser(description="LLM client config check")
     parser.add_argument("--dry-run", action="store_true", help="Don't actually call LLM")
@@ -148,21 +173,21 @@ if __name__ == "__main__":
 
     print("=== LLM Client Config Check ===\n")
 
-    # Show config source
     base_url_env = os.environ.get("LLM_BASE_URL", "")
     api_key_env = os.environ.get("LLM_API_KEY", "")
+    default_model = _get_default_model()
 
     if base_url_env and api_key_env:
         print("✅ Config source: 环境变量 (LLM_BASE_URL + LLM_API_KEY)")
         print(f"   base_url: {base_url_env}")
-        print(f"   model: {DEFAULT_MODEL}")
+        print(f"   model: {default_model}")
     elif MODELS_CONFIG.exists():
         print(f"✅ Config source: models.json ({MODELS_CONFIG})")
-        print(f"   model: {DEFAULT_MODEL}")
+        print(f"   model: {default_model}")
     else:
         print("❌ 未找到配置")
         print("   请设置环境变量 LLM_BASE_URL 和 LLM_API_KEY")
-        print("   或确保 ~/.openclaw/agents/main/agent/models.json 存在")
+        print(f"   或确保 {MODELS_CONFIG} 存在")
 
     if args.dry_run or args.test_call:
         resp = llm_complete("Say hello in 5 words.", dry_run=args.dry_run)

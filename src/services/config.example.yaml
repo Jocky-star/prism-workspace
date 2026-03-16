@@ -1,0 +1,36 @@
+# Brief 服务配置示例
+# 使用方法：cp config.example.yaml config.yaml，然后修改 config.yaml
+#
+# config.yaml 已加入 .gitignore，不会被提交（保护隐私数据）
+# config.example.yaml 会提交到 git，作为新用户的参考模板
+
+brief:
+  # 推送目标（飞书 open_id）
+  # 在飞书开发者后台或通过 API 查询用户 open_id
+  # 多个用逗号分隔：target_user_id: "ou_xxx,ou_yyy"
+  target_user_id: "ou_xxx"
+
+  # Brief 推送时间（仅供 cron 配置参考，实际调度由 OpenClaw cron 控制）
+  push_time: "08:30"
+
+  # 内容字数限制（0 = 不限制）
+  max_chars: 0
+
+feishu:
+  # 飞书租户域名（从飞书管理后台"应用信息"页面获取）
+  # 格式：<tenant_key>.feishu.cn
+  tenant_domain: "xxx.feishu.cn"
+
+  # 应用凭证（推荐从 ~/.openclaw/openclaw.json 自动读取）
+  # 如需手动覆盖，取消注释并填入：
+  # app_id: "cli_xxx"
+  # app_secret: "xxx"   # 注意：填在此处有安全风险，建议用环境变量替代
+
+  # openclaw.json 路径（默认 ~/.openclaw/openclaw.json）
+  # openclaw_json: "~/.openclaw/openclaw.json"
+
+llm:
+  # 模型名称
+  # "auto" = 自动从 ~/.openclaw/agents/main/agent/models.json 读取默认配置
+  # 也可指定具体模型名，如：claude-haiku-4-5-20251001、gpt-4o-mini
+  model: "auto"

@@ -53,23 +53,25 @@ logging.basicConfig(
 )
 log = logging.getLogger("morning_push")
 
-FEISHU_USER_IDS = [
-    "ou_f305f404023133b798c664548d5a4304",
-    # ou_aadea4b6794e6c4fae3abee4bb72017e — cross-app error, skip
-]
-FEISHU_APP_ID = "cli_a92c2197caf9dcc7"
+# 从 config 读取所有可配置项（不在本文件硬编码）
+from src.services.config import (
+    get_feishu_target_user_ids,
+    get_feishu_app_id,
+    get_feishu_app_secret,
+    get_openclaw_json_path,
+)
+
 FEISHU_DOMAIN = "https://open.feishu.cn"
-OPENCLAW_JSON = Path.home() / ".openclaw/openclaw.json"
 
 
 def get_yesterday(tz_offset: int = 8) -> str:
-    """获取昨天的日期字符串"""
+    """获取昨天的日期字符串（Asia/Shanghai）。"""
     tz = timezone(timedelta(hours=tz_offset))
     return (datetime.now(tz) - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 def _http_post(url: str, payload: dict, headers: dict, timeout: int = 30) -> dict:
-    """带重试的 HTTP POST"""
+    """带重试的 HTTP POST（最多 3 次，指数退避）。"""
     data = json.dumps(payload).encode("utf-8")
     for attempt in range(3):
         try:
@@ -93,19 +95,24 @@ def _http_post(url: str, payload: dict, headers: dict, timeout: int = 30) -> dic
 
 
 def get_tenant_access_token() -> str | None:
-    """从 openclaw.json 读 appSecret，换取 tenant_access_token"""
-    try:
-        cfg = json.loads(OPENCLAW_JSON.read_text(encoding="utf-8"))
-        channels = cfg.get("channels", {})
-        feishu = channels.get("feishu", {})
-        app_secret = feishu.get("appSecret", "")
-        if not app_secret:
-            log.error("appSecret not found in openclaw.json channels.feishu")
-            return None
+    """获取飞书 tenant_access_token。
 
+    优先从环境变量/config.yaml 读取凭证，其次从 openclaw.json 自动读取。
+    """
+    app_id = get_feishu_app_id()
+    app_secret = get_feishu_app_secret()
+
+    if not app_id or not app_secret:
+        log.error(
+            "飞书凭证未配置。请设置环境变量 FEISHU_APP_ID + FEISHU_APP_SECRET，"
+            "或在 config.yaml 中配置，或确保 openclaw.json 存在。"
+        )
+        return None
+
+    try:
         result = _http_post(
             f"{FEISHU_DOMAIN}/open-apis/auth/v3/tenant_access_token/internal",
-            {"app_id": FEISHU_APP_ID, "app_secret": app_secret},
+            {"app_id": app_id, "app_secret": app_secret},
             {"Content-Type": "application/json"},
         )
         token = result.get("tenant_access_token", "")
@@ -120,7 +127,7 @@ def get_tenant_access_token() -> str | None:
 
 
 def _text_to_post_content(text: str) -> dict:
-    """把 format_brief_message 输出的 markdown 转成飞书 Interactive Card 格式。
+    """将 format_brief_message 输出的 markdown 转换为飞书 Interactive Card 格式。
 
     v5: format_brief_message 已输出完整 markdown（含 **加粗**、列表等），
     直接透传到 card 的 markdown element 即可。
@@ -128,12 +135,9 @@ def _text_to_post_content(text: str) -> dict:
     - body: markdown element 包含剩余内容
     """
     lines = text.split("\n")
-    # 标题：取第一行，去掉 emoji 前缀
     title = lines[0].strip() if lines else "早安 Brief"
     body_lines = lines[1:] if len(lines) > 1 else []
-
-    # 直接透传 markdown，飞书 card 原生支持 **加粗** 和列表
-    body_md = "\n".join(line for line in body_lines).strip()
+    body_md = "\n".join(body_lines).strip()
 
     return {
         "elements": [
@@ -153,7 +157,7 @@ def _text_to_post_content(text: str) -> dict:
 
 
 def send_feishu_post(user_id: str, text: str, token: str) -> bool:
-    """发送飞书私信（Interactive Card + markdown，支持加粗）"""
+    """发送飞书私信（Interactive Card + markdown，支持加粗）。"""
     try:
         card_content = _text_to_post_content(text)
         result = _http_post(
@@ -181,14 +185,26 @@ def send_feishu_post(user_id: str, text: str, token: str) -> bool:
 
 
 def push_to_feishu(msg: str) -> bool:
-    """推送消息到所有目标飞书用户，返回是否全部成功"""
+    """推送消息到所有目标飞书用户，返回是否全部成功。
+
+    目标用户从 config 读取（环境变量 BRIEF_TARGET_USER_ID 或 config.yaml）。
+    如果未配置目标用户，跳过推送并记录警告。
+    """
+    user_ids = get_feishu_target_user_ids()
+    if not user_ids:
+        log.warning(
+            "未配置推送目标（BRIEF_TARGET_USER_ID 未设置，config.yaml 也未配置）。"
+            "Brief 只输出到 stdout。"
+        )
+        return False
+
     token = get_tenant_access_token()
     if not token:
         log.error("Cannot push to Feishu: no token")
         return False
 
     any_success = False
-    for uid in FEISHU_USER_IDS:
+    for uid in user_ids:
         ok = send_feishu_post(uid, msg, token)
         if ok:
             any_success = True
@@ -252,8 +268,7 @@ def main():
             if feishu_ok:
                 log.info("✅ Feishu push succeeded")
             else:
-                log.error("❌ Feishu push failed for all users")
-                exit_code = 1
+                log.warning("⚠️ Feishu push skipped or failed (check logs above)")
         except Exception as e:
             log.error(f"Feishu push exception: {e}")
             exit_code = 1
@@ -267,7 +282,6 @@ def main():
         except Exception as e:
             log.error(f"Failed to write output file: {e}")
     else:
-        # stdout 输出 brief 文本（cron announce 会读取这个作兜底）
         print(msg)
 
     sys.exit(exit_code)

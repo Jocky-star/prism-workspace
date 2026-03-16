@@ -33,8 +33,15 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
+# 将项目根目录加入路径，使 src.services.config 可导入
+_pkg_root = Path(__file__).resolve().parent.parent.parent
+if str(_pkg_root) not in sys.path:
+    sys.path.insert(0, str(_pkg_root))
+
+from src.services.config import MEMORY_DIR
+
 _tz = timezone(timedelta(hours=8))
-ACTION_LOG_DIR = Path(__file__).resolve().parent.parent.parent / "memory" / "action_log"
+ACTION_LOG_DIR = MEMORY_DIR / "action_log"
 
 
 def log_action(

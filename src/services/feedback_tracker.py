@@ -36,9 +36,16 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# 将项目根目录加入路径，使 src.services.config 可导入
+_pkg_root = Path(__file__).resolve().parent.parent.parent
+if str(_pkg_root) not in sys.path:
+    sys.path.insert(0, str(_pkg_root))
+
+from src.services.config import MEMORY_DIR
+
 _tz = timezone(timedelta(hours=8))
 
-FEEDBACK_DIR = Path(__file__).resolve().parent.parent.parent / "memory" / "feedback"
+FEEDBACK_DIR = MEMORY_DIR / "feedback"
 SUGGESTIONS_FILE = FEEDBACK_DIR / "suggestions.jsonl"
 RESPONSES_FILE = FEEDBACK_DIR / "responses.jsonl"
 

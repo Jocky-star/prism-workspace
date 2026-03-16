@@ -30,7 +30,7 @@ while _ws.name != "src" and _ws != _ws.parent:
 if _ws.name == "src":
     _sys.path.insert(0, str(_ws.parent))
 
-from src.services.config import WORKSPACE, MEMORY_DIR, SERVICES_OUTPUT_DIR
+from src.services.config import WORKSPACE, MEMORY_DIR, SERVICES_OUTPUT_DIR, get_feishu_tenant_domain
 sys.path.insert(0, str(WORKSPACE))
 
 from src.services.data_sources import DataSourceRegistry
@@ -582,9 +582,11 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
     # ---------- 📊 系统状态 ----------
     sys_status = b.get("system_status", "") or b.get("status_note", "")
     if sys_status:
+        # 将通用 feishu.cn 链接替换为租户域名（从 config 读取）
+        tenant_domain = get_feishu_tenant_domain()
         sys_status = re.sub(
             r'https?://feishu\.cn/(docx|base|wiki)/',
-            r'https://ccnq3wnum0kr.feishu.cn/\1/',
+            rf'https://{tenant_domain}/\1/',
             sys_status
         )
     parts.append(f"📊 {sys_status if sys_status else '系统状态：一切正常'}")

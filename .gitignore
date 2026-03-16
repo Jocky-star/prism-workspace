@@ -71,3 +71,6 @@ dist/
 content-*.py
 content-*.md
 xhs-*.py
+
+# Brief 服务用户配置（含敏感数据，不提交）
+src/services/config.yaml
