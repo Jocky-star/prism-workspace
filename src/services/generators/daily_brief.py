@@ -293,54 +293,42 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
     action_log_summary = _build_action_log_summary(data)
     supplementary_summary = _build_supplementary_summary(data)
 
-    system_prompt = """你是私人秘书星星。基于对老板的长期理解和最近的互动，生成今日简报。
+    system_prompt = """你是私人秘书星星。基于对老板的录音、对话、行为数据，生成今日简报。
 
-## 铁律（违反任何一条直接删掉该条目）
-1. **只写结论，不写过程** — "发现了X，它能做Y，对你的价值是Z"，不写"已开始研究X"
-2. **每条必须有具体名称+具体结果** — "发现了重磅项目"是废话，"发现了 Qwen3-235B 开源，reasoning 能力超 DeepSeek-R1，可用于替换本地推理模型"才是结论
-3. **自检：这条删掉老板会损失信息吗？** — 如果不会，直接删
-4. **禁止词：待评估、待调研、需确认、待跟进、进行中、已开始** — 包含这些词的条目一律删除，如果你不知道结论就别写
-5. **只汇报真实发生的事** — 行动日志里有的才写 deliveries/proactive，没有就空数组
-6. **300字以内** — 超过就裁，留最重要的
+## 核心原则：记录→理解→服务
+Brief 不是技术报告。它是你作为秘书，基于对老板生活和工作的理解，主动帮他做了什么事的汇报。
 
-## 输出结构
-输出 JSON，严格按下面的格式：
+**优先级（严格按此排序）：**
+1. 🔴 基于录音/对话发现的生活需求，你主动帮查/帮做了什么（机票、挂号、装备清单、路线规划等）
+2. 🟡 基于录音/对话发现的工作需求，你给出了什么建议/调研结论
+3. 🔵 系统自身的改进（代码重构、cron修复等）——只在前两类为空时才写
+
+## 铁律
+1. **只写结论不写过程** — "帮你查了北京→福州机票，清明4/4厦航¥500最便宜"
+2. **每条必须有具体数据** — 价格、时间、地址、航班号等
+3. **禁止词一律删除**：待评估、待调研、需确认、待跟进、进行中、已开始
+4. **action_log 是唯一事实源** — deliveries/proactive 只写 action_log 里有的
+5. **500字以内**
+
+## 输出 JSON
 {
-  "key_conclusions": [
-    "XXX 已完成：具体结果是 Y，对你意味着 Z"
-  ],
-  "minor_updates": [
-    "XX 小进展：一句话说清楚"
-  ],
-  "decisions_needed": [
-    {"item": "事项名", "option_a": "A方案（优点）", "option_b": "B方案（优点）"}
-  ],
+  "key_conclusions": ["基于你提到想去福州：查了携程，清明4/4厦航¥500最便宜"],
+  "minor_updates": ["皮肤科挂号：海淀医院114平台每天7:00放号"],
+  "decisions_needed": [{"item": "福州机票", "option_a": "清明4/4厦航¥500晚班", "option_b": "3/28海航¥590上午"}],
   "system_status": "一切正常",
-  "deliveries": [{"title": "做了什么", "detail": "具体结果"}],
-  "proactive": [{"insight": "注意到...", "action": "帮你做了...", "result": "结果"}],
-  "captured_intents": [{"quote": "用户说的话≤30字", "action_taken": "具体做了什么+结果", "status": "done/blocked/prepared"}],
-  "tracking": [{"item": "跟踪项", "status": "具体结论", "next_action": "下一步"}]
+  "proactive": [{"insight": "注意到你说过...", "action": "帮你查了...", "result": "具体结果+数据"}],
+  "deliveries": [{"title": "做了什么", "detail": "具体结果"}]
 }
 
 ## 字段规则
-- **key_conclusions**: 最重要的 1-3 条结论，影响老板决策或需要他知道的大事。每条必须包含具体事实和 so what。格式："X事项：查了/做了Y，结论是Z"。不写"需确认""待跟进"——如果你不知道结论，先去查再写。
-- **minor_updates**: 次要但值得一提的进展，3-5 条。一句话点到即止。
-- **decisions_needed**: 真正需要老板拍板的，给清晰的 A/B 选项。如果你能先做调研再问，就先做。
-- **system_status**: 一行，"一切正常"或具体异常。
-- **deliveries**: 只从 action_log 有记录的生成，没有就空数组。
-- **proactive**: 只从 action_log 有记录的生成，没有就空数组。
-- **captured_intents**: 从最近对话中提取用户表达的意图/需求。action_taken 必须写具体做了什么+结果，不能写"已开始"。
-- **tracking**: 基于用户高优先级意图，汇报具体进展。不写"进行中"——写清楚到了哪一步、卡在什么地方。
+- **key_conclusions**: 最重要1-3条。优先写 proactive（基于录音/对话主动帮做的事）。格式："基于你提到XX → 帮你做了YY → 结论ZZ"
+- **minor_updates**: 次要1-3条
+- **decisions_needed**: 需拍板的给A/B+具体数据
+- **proactive**: action_log 中 category=proactive 的。这是最有价值的！
+- **deliveries**: action_log 中 category=delivery 的
+- **system_status**: 一行
 
-## 生成要求
-1. 基于对老板的长期理解（画像、价值观、工作风格），判断哪些信息对他有价值
-2. 结合最近对话中他关注的事情，给出进展结论
-3. 如果有他之前的反馈（比如忽略了某类建议），这次要体现改进（不再重复）
-4. 所有结论都要有具体内容，不是空洞的状态描述
-5. 300字以内，宁缺勿滥
-
-⚠️ 宁可整个 Brief 只有1条结论甚至0条，也绝不输出模糊的废话。Brief 的信任感 > 内容丰富度。
-⚠️ 最终输出前逐条自检：这条包含"待评估/待调研/需确认/待跟进/进行中/已开始/发现了XX（但没说是什么）"吗？包含就删。"""
+⚠️ 宁可只有1条 proactive，也不要用系统改进凑数。老板关心你帮他做了什么，不是你改了什么代码。"""
 
     user_prompt = f"""## 你对老板的理解
 {intelligence_summary}
@@ -493,14 +481,52 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
     _VAGUE_WORDS = ["待评估", "待调研", "需确认", "待跟进", "进行中", "已开始", "待详细", "需要评估", "有待", "尚未", "待启动", "待完成", "待推进", "待确认", "待定", "待处理"]
     key_conclusions = [c for c in key_conclusions if not any(w in c for w in _VAGUE_WORDS)]
 
-    if key_conclusions:
+    # 🔴 优先级提升：把 proactive 的结果摘要插到 key_conclusions 最前面
+    # 这确保即使 LLM 没有把 proactive 放到 key_conclusions，formatter 也会强制提升
+    proactive_items_raw: List[Dict[str, Any]] = b.get("proactive", [])
+    proactive_summaries: List[str] = []
+    for p_item in proactive_items_raw:
+        insight = p_item.get("insight", "")
+        action = p_item.get("action", "")
+        result_str = p_item.get("result", "")
+        # 拼成一行结论
+        if insight and result_str:
+            summary = f"{insight} → {result_str}"
+        elif action and result_str:
+            summary = f"{action} → {result_str}"
+        elif result_str:
+            summary = result_str
+        elif insight:
+            summary = insight
+        else:
+            continue
+        # 避免重复（如果 LLM 已经把它放到 key_conclusions 了）
+        if not any(result_str[:15] in c for c in key_conclusions if result_str):
+            proactive_summaries.append(summary)
+
+    # proactive 放最前，系统技术改进（含关键词）降级到 minor
+    _TECH_WORDS = ["cron", "代码", "重构", "架构", "脚本", "bug", "修复", "migration", "README", "onboarding", "setup"]
+    tech_conclusions = [c for c in key_conclusions if any(w in c for w in _TECH_WORDS)]
+    non_tech_conclusions = [c for c in key_conclusions if not any(w in c for w in _TECH_WORDS)]
+
+    # 最终 key_conclusions = proactive摘要 + 非技术结论（限3条）
+    final_key = proactive_summaries + non_tech_conclusions
+    final_key = final_key[:3]  # 最多3条
+    # 技术改进条目降级到 minor_updates（后面处理）
+
+    if final_key:
         parts.append("🔴 重要")
-        for c in key_conclusions:
+        for c in final_key:
             parts.append(f"- {c}")
         parts.append("")
 
+    # 把技术结论暂存，后面放到跟进里
+    _tech_minor: List[str] = tech_conclusions
+
     # ---------- 🔵 常规跟进 ----------
     minor_updates: List[str] = b.get("minor_updates", [])
+    # 把技术结论合并进来
+    minor_updates = _tech_minor + minor_updates
     # fallback: 从 tracking/intents 中拼
     if not minor_updates:
         for t in b.get("tracking", []):
@@ -545,6 +571,28 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
                 parts.append(f"- {item}：{oa}")
         parts.append("")
 
+    # ---------- 💡 主动服务（proactive）----------
+    proactive_items: List[Dict[str, Any]] = b.get("proactive", [])
+    if proactive_items:
+        parts.append("💡 帮你查到的")
+        for p_item in proactive_items:
+            text, _ = _format_proactive_entry(p_item)
+            parts.append(f"- {text}")
+        parts.append("")
+
+    # ---------- 📦 交付物（deliveries）----------
+    deliveries: List[Dict[str, Any]] = b.get("deliveries", [])
+    if deliveries:
+        parts.append("📦 完成的事")
+        for d_item in deliveries:
+            title = d_item.get("title", "")
+            detail = d_item.get("detail", "")
+            if title and detail:
+                parts.append(f"- {title}：{detail}")
+            elif title:
+                parts.append(f"- {title}")
+        parts.append("")
+
     # ---------- 📊 系统状态 ----------
     # 优先用 LLM 的 system_status，fallback 到 status_note
     sys_status = b.get("system_status", "") or b.get("status_note", "")
@@ -560,9 +608,9 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
 
     msg = "\n".join(parts)
 
-    # 硬截断到 300 字（保留标题完整性）
-    if len(msg) > 300:
-        msg = msg[:297] + "..."
+    # 硬截断到 600 字（保留标题完整性）
+    if len(msg) > 600:
+        msg = msg[:597] + "..."
 
     return msg
 
