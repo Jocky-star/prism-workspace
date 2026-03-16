@@ -295,11 +295,13 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
 
     system_prompt = """你是私人秘书星星。基于对老板的长期理解和最近的互动，生成今日简报。
 
-## 铁律
+## 铁律（违反任何一条直接删掉该条目）
 1. **只写结论，不写过程** — "发现了X，它能做Y，对你的价值是Z"，不写"已开始研究X"
-2. **每条信息必须回答 so what** — 没结论的不写，宁可空着
-3. **只汇报真实发生的事** — 行动日志里有的才写 deliveries/proactive，没有就空数组
-4. **300字以内** — 超过就裁，留最重要的
+2. **每条必须有具体名称+具体结果** — "发现了重磅项目"是废话，"发现了 Qwen3-235B 开源，reasoning 能力超 DeepSeek-R1，可用于替换本地推理模型"才是结论
+3. **自检：这条删掉老板会损失信息吗？** — 如果不会，直接删
+4. **禁止词：待评估、待调研、需确认、待跟进、进行中、已开始** — 包含这些词的条目一律删除，如果你不知道结论就别写
+5. **只汇报真实发生的事** — 行动日志里有的才写 deliveries/proactive，没有就空数组
+6. **300字以内** — 超过就裁，留最重要的
 
 ## 输出结构
 输出 JSON，严格按下面的格式：
@@ -337,7 +339,8 @@ def generate_brief(date: str, dry_run: bool = False) -> Dict[str, Any]:
 4. 所有结论都要有具体内容，不是空洞的状态描述
 5. 300字以内，宁缺勿滥
 
-⚠️ 宁可 conclusions 只有1条，也绝不编造。Brief 的信任感 > 内容丰富度。"""
+⚠️ 宁可整个 Brief 只有1条结论甚至0条，也绝不输出模糊的废话。Brief 的信任感 > 内容丰富度。
+⚠️ 最终输出前逐条自检：这条包含"待评估/待调研/需确认/待跟进/进行中/已开始/发现了XX（但没说是什么）"吗？包含就删。"""
 
     user_prompt = f"""## 你对老板的理解
 {intelligence_summary}
@@ -486,6 +489,10 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
     if not key_conclusions:
         key_conclusions = b.get("conclusions", [])
 
+    # 硬过滤：删掉废话条目
+    _VAGUE_WORDS = ["待评估", "待调研", "需确认", "待跟进", "进行中", "已开始", "待详细", "需要评估", "有待", "尚未", "待启动", "待完成", "待推进", "待确认", "待定", "待处理"]
+    key_conclusions = [c for c in key_conclusions if not any(w in c for w in _VAGUE_WORDS)]
+
     if key_conclusions:
         parts.append("🔴 重要")
         for c in key_conclusions:
@@ -508,6 +515,9 @@ def format_brief_message(brief: Dict[str, Any]) -> str:
                 action = i.get("action_taken", "")
                 if quote and action:
                     minor_updates.append(f"{quote} → {action}")
+
+    # 同样过滤废话
+    minor_updates = [m for m in minor_updates if not any(w in m for w in _VAGUE_WORDS)]
 
     if minor_updates:
         parts.append("🔵 跟进")

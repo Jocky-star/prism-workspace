@@ -1,0 +1,272 @@
+[
+  {
+    "id": 1,
+    "title": "Claude帮NASA开火星车：你的AI正在宇宙旅行",
+    "category": "AI震撼时刻",
+    "urgency": "hot",
+    "notes": "Claude规划Perseverance Rover 400米火星路线，500K变量仿真验证。对比：你用Claude写PPT vs Claude开火星车",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 2,
+    "title": "AI编程助手把AWS中国删库了：13小时宕机始末",
+    "category": "AI事故复盘",
+    "urgency": "hot",
+    "notes": "Amazon Kiro删除重建整个环境，13小时宕机。Amazon甩锅人类错误。现在junior工程师的AI改动要senior审批",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 3,
+    "title": "Claude今天发布了：对话中直接画交互图表！",
+    "category": "AI产品更新",
+    "urgency": "hot",
+    "notes": "2026-03-12发布。内嵌于对话流，免费版就有。复利曲线/元素周期表案例",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 4,
+    "title": "GPT-5.4发布：AI操电脑的能力正式超过人类（75% vs 72.4%）",
+    "category": "AI模型评测",
+    "urgency": "hot",
+    "notes": "OSWorld基准AI 75% > 人类72.4%。专业工作83%超越行业专业人士。1M上下文。幻觉减少33%",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 5,
+    "title": "你的名字被AI用来背书了，你知道吗？Grammarly事件",
+    "category": "AI伦理/权益",
+    "urgency": "hot",
+    "notes": "Superhuman Expert Review未经许可用作者名字背书AI建议。涉及知名媒体人/名人",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 6,
+    "title": "Yann LeCun离开Meta！AI之神开新公司了",
+    "category": "AI人物",
+    "urgency": "hot",
+    "notes": "离开Meta，巴黎，Advance Machine Intelligence，10亿美元，做AI世界模型",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 7,
+    "title": "Claude Sonnet 4.6：旗舰模型的定义变了",
+    "category": "AI模型评测",
+    "urgency": "warm",
+    "notes": "开发者59%偏好Sonnet 4.6 > Opus 4.5。价格不变但性能接近旗舰。1M上下文beta",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 8,
+    "title": "AI Agent大战2026：谁的AI最能干活？",
+    "category": "AI对比评测",
+    "urgency": "warm",
+    "notes": "ChatGPT Agent vs Claude Computer Use vs Gemini in Chrome vs Perplexity Comet。各自特点对比",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 9,
+    "title": "ChatGPT Agent来了：帮你定餐厅、买超市、自动停车",
+    "category": "AI产品体验",
+    "urgency": "warm",
+    "notes": "合并Operator+Deep Research。有虚拟计算机。15-30分钟慢但确实能干活",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 10,
+    "title": "用AI建个人信息过滤系统：告别信息过载",
+    "category": "AI工作流教程",
+    "urgency": "warm",
+    "notes": "RSS -> LLM打分 -> 向量去重 -> IM推送。三级通知降噪阈值设计。Video Transcript API",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 11,
+    "title": "Notion Agent帮我自动发帖是什么体验",
+    "category": "AI工作流教程",
+    "urgency": "warm",
+    "notes": "Notion Custom Agent案例：在Notion写好帖子，拖状态，自动发X。11步自动博客发布",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 12,
+    "title": "Mira Murati x NVIDIA：1GW算力加AI创业的内幕",
+    "category": "AI行业动态",
+    "urgency": "warm",
+    "notes": "前OpenAI CTO。1GW Vera Rubin系统。联创三人回流OpenAI有点狗血",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 13,
+    "title": "Vibe Research：AI让一个人干了整个科研团队的活",
+    "category": "AI深度科普",
+    "urgency": "evergreen",
+    "notes": "斯坦福教授1小时+$10复现PNAS论文。AI放大已有判断力，不是凭空创造",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 14,
+    "title": "700美元的MacBook能跑多大的数据分析？",
+    "category": "硬件评测",
+    "urgency": "evergreen",
+    "notes": "MacBook Neo + DuckDB 1.5.0。Apple A18 Pro（iPhone 16 Pro芯片）。100M行数据benchmark",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 15,
+    "title": "代码可以缩小10倍？CodeSpeak的AI编程语言实测",
+    "category": "开发者工具",
+    "urgency": "evergreen",
+    "notes": "Kotlin创造者做的语言。规格描述代替代码。255行到38行（yt-dlp案例）",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 16,
+    "title": "Qwen-Image-Edit：在图片上直接改文字（中文也能改！）",
+    "category": "AI图像工具",
+    "urgency": "hot",
+    "notes": "阿里Qwen新模型。可以改图上的任何文字，保留字体/大小/风格。中英文双语。还能改风格、换背景。SOTA",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 17,
+    "title": "VEO 3.1全面压制Sora：AI视频生成战争谁赢了？",
+    "category": "AI视频生成",
+    "urgency": "hot",
+    "notes": "Google VEO 3.1 vs Sora 2 Pro vs Meta MovieGen。文生视频+音频原生生成。物理引擎真实感第一",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 18,
+    "title": "llama.cpp加入HuggingFace：本地AI的基础设施统一了",
+    "category": "开源AI生态",
+    "urgency": "warm",
+    "notes": "GGML/llama.cpp创始人Georgi Gerganov入职HF。目标：一键部署本地模型。transformers+llama.cpp=完整本地AI栈",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 19,
+    "title": "人形机器人开源了：LeRobot v0.5.0支持Unitree G1",
+    "category": "机器人/具身AI",
+    "urgency": "warm",
+    "notes": "HuggingFace LeRobot首个人形机器人集成。行走+操作+遥操作+全身控制。200+ PR，50+ 新贡献者",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 20,
+    "title": "NVIDIA AI-Q研究Agent双榜第一：比ChatGPT深度搜索强在哪？",
+    "category": "AI Agent评测",
+    "urgency": "warm",
+    "notes": "DeepResearch Bench I 55.95 + II 54.50双冠。三层Agent架构（规划-研究-合成）。开源可自部署",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 21,
+    "title": "AI编程的第三纪元：35%的代码已经是AI自己写的了",
+    "category": "AI编程工具",
+    "urgency": "hot",
+    "notes": "Cursor内部数据：35% PR是AI自主创建。Agent用量15倍增长。'一年后大部分开发工作将由Agent完成'",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 22,
+    "title": "Cursor Automations：写代码的Agent可以自动工作了",
+    "category": "AI编程工具",
+    "urgency": "warm",
+    "notes": "Slack/GitHub/PagerDuty事件触发。安全审查、PR分配、事故响应全自动化。工程师变成'工厂管理者'",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 23,
+    "title": "OpenAI Prism：免费AI科学写作工具，直接竞争Overleaf",
+    "category": "AI产品更新",
+    "urgency": "warm",
+    "notes": "LaTeX编辑器+ChatGPT+Codex深度集成。理解论文全文上下文。面向科学家免费",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 24,
+    "title": "AI说服力和人类一样强了：Anthropic研究数据",
+    "category": "AI深度科普",
+    "urgency": "evergreen",
+    "notes": "Claude 3 Opus说服力与人类无统计学差异。每代模型递增。3832名受试者实验",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 25,
+    "title": "AI会让程序员退化？Anthropic用实验给出了答案",
+    "category": "AI深度科普",
+    "urgency": "hot",
+    "notes": "随机对照实验：AI辅助后技能掌握下降17%。但用AI'问解释'的人不受影响。用法比是否用更重要",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 26,
+    "title": "Anthropic研究：AI真正影响了哪些工作？官方数据首次公开",
+    "category": "AI社会影响",
+    "urgency": "hot",
+    "notes": "observed exposure新框架。高暴露职业：高龄/女性/高薪/高学历。年轻人招聘已放缓。但还没失业潮",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 27,
+    "title": "Claude的新宪法：AI的行为准则是怎么写的？",
+    "category": "AI深度科普",
+    "urgency": "warm",
+    "notes": "2026年1月22日更新。从'规则列表'改为'理由+原则'。四大优先级。CC0开源可直接用于自己的AI项目。Claude=有医生/律师知识的好朋友",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 28,
+    "title": "AI知道什么时候该停下来了：Anthropic最新研究",
+    "category": "AI深度科普",
+    "urgency": "evergreen",
+    "notes": "百万真实Agent交互数据。Claude Code自主时长3个月翻倍。复杂任务Agent自己暂停>人类打断。有经验用户40%全自动",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 29,
+    "title": "AI在悄悄影响你的判断：Anthropic 150万对话实证研究",
+    "category": "AI深度科普",
+    "urgency": "hot",
+    "notes": "首个大规模AI自主权研究。三种剥夺形式（现实扭曲/价值扭曲/行动扭曲）。有人叫Claude'Master'。1/1300对话有严重现实扭曲风险，但总量是惊人的数字",
+    "created": "2026-03-13",
+    "status": "idea"
+  },
+  {
+    "id": 30,
+    "title": "AI越用越傻？测量你与AI协作的质量",
+    "category": "AI使用技巧",
+    "urgency": "warm",
+    "notes": "AI Fluency Index。24个行为指标。85.7%的人会迭代优化。但在做代码/文档时人们停止质疑AI。迭代+质疑=真正的AI能力",
+    "created": "2026-03-13",
+    "status": "idea"
+  }
+]
