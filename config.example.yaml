@@ -1,0 +1,73 @@
+# Prism 配置文件示例
+# 用法: cp config.example.yaml config.yaml，然后填入你的配置
+# config.yaml 已被 gitignore，不会提交到 git
+
+# ── LLM API 配置 ──────────────────────────────────────────────────────────────
+llm:
+  # API endpoint（兼容 OpenAI 格式）
+  # 示例：https://api.openai.com/v1 / https://api.anthropic.com / 自搭的代理
+  endpoint: "https://your-llm-proxy.example.com/v1"
+  api_key: "sk-your-api-key-here"
+  # 默认模型（支持 litellm 格式）
+  default_model: "claude-sonnet-4-6"
+  # 快速任务用轻量模型
+  fast_model: "claude-haiku-4-5"
+
+# ── 飞书 Bot 配置 ─────────────────────────────────────────────────────────────
+feishu:
+  # 飞书应用 App ID 和 App Secret
+  # 在飞书开放平台创建自建应用后获取
+  app_id: "cli_your_app_id"
+  app_secret: "your_app_secret"
+  # 目标用户的 open_id（消息推送目标）
+  # 获取方式：在飞书开放平台调用 /auth/v3/app_access_token 后查询用户信息
+  target_user_open_id: "ou_your_open_id_here"
+
+# ── 数据源配置 ────────────────────────────────────────────────────────────────
+sources:
+  # 录音数据 API（音频转写服务）
+  audio:
+    enabled: false
+    api_url: "https://your-audio-api.example.com"
+    api_key: ""
+  
+  # 股票监控（A股）
+  stock:
+    enabled: false
+    # 关注的股票列表
+    watchlist: []
+    # 示例: ["600519", "000858"]
+
+# ── 可选功能开关 ──────────────────────────────────────────────────────────────
+features:
+  # 摄像头感知（需要树莓派 + 摄像头）
+  camera:
+    enabled: false
+    # 摄像头旋转角度（物理倒置时设置 180）
+    rotation: 0
+  
+  # 米家智能家居控制
+  mijia:
+    enabled: false
+    # 米家账号（手机号）
+    username: ""
+    password: ""
+    region: "cn"
+  
+  # SPI 屏幕（Prism 状态屏）
+  screen:
+    enabled: false
+    fb_path: "/dev/fb0"
+  
+  # 小红书内容发布
+  xiaohongshu:
+    enabled: false
+
+# ── 系统配置 ──────────────────────────────────────────────────────────────────
+system:
+  # 时区
+  timezone: "Asia/Shanghai"
+  # 工作目录（一般不需要改）
+  workspace: "~/.openclaw/workspace"
+  # 日志级别：DEBUG / INFO / WARNING
+  log_level: "INFO"

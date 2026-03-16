@@ -58,9 +58,11 @@ cd "$WORKSPACE"
 
 case "$TASK" in
   daily_pipeline)
-    TODAY=$(date +%Y%m%d)
-    if python3 src/actions/planning/daily_pipeline.py --date "$TODAY" --force 2>&1 | tee -a "$LOG_FILE"; then
-        log "OK: daily_pipeline done"
+    # ⚠️ 已迁移至新版 services/pipeline.py（2026-03-16）
+    # 旧版 src/actions/planning/daily_pipeline.py 已停用
+    TODAY=$(date '+%Y-%m-%d')
+    if python3 src/services/pipeline.py --date "$TODAY" --pipeline daily 2>&1 | tee -a "$LOG_FILE"; then
+        log "OK: daily_pipeline (new: services/pipeline.py) done"
     else
         notify_error "daily_pipeline 执行失败 ($TODAY)"
         exit 1

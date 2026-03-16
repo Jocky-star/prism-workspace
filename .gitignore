@@ -1,7 +1,7 @@
 # === 隐私 & 数据 ===
 memory/
 diary/
-data/
+/data/
 camera/
 logs/
 *.jsonl
@@ -53,9 +53,10 @@ node_modules/
 *.gif
 *.wav
 *.mp3
-*.json
+# *.json — 不能全忽略，会误伤 src/ 下的配置文件
 
-# === 允许的 json ===
+# === 允许的 json（src/下的代码配置）===
+!src/**/*.json
 !package.json
 
 # === OS ===
