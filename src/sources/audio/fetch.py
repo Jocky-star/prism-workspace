@@ -97,42 +97,75 @@ def main():
     parser.add_argument("--no-save", action="store_true", help="不存文件")
     args = parser.parse_args()
 
-    dates = []
-    if args.range:
-        today = datetime.now()
-        for i in range(1, args.range + 1):
-            d = today - timedelta(days=i)
-            dates.append(d.strftime("%Y%m%d"))
-    elif args.date:
-        dates = [args.date.replace("-", "")]
-    else:
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-        dates = [yesterday]
+    import logging as _logging
+    _log_dir = DATA_DIR.parent.parent / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _logging.basicConfig(
+        level=_logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            _logging.FileHandler(_log_dir / "audio_fetch.log", encoding="utf-8"),
+            _logging.StreamHandler(sys.stderr),
+        ],
+    )
+    _log = _logging.getLogger("audio_fetch")
 
-    fetched = 0
-    skipped = 0
-    for date_str in dates:
-        # 检查是否已存在
-        existing = DATA_DIR / f"{date_str}.json"
-        if existing.exists() and not args.summary:
-            print(f"  ⏭ {date_str} 已存在，跳过")
-            skipped += 1
-            continue
-
-        print(f"  📥 拉取 {date_str}...", end=" ")
-        data = fetch_date(date_str, args.user)
-        if data:
-            print(f"✅ {data['count']} 条记录")
-            if args.summary:
-                print(summarize(data))
-            if not args.no_save:
-                path = save_report(date_str, data)
-                print(f"  💾 存储到 {path}")
-            fetched += 1
+    try:
+        dates = []
+        if args.range:
+            today = datetime.now()
+            for i in range(1, args.range + 1):
+                d = today - timedelta(days=i)
+                dates.append(d.strftime("%Y%m%d"))
+        elif args.date:
+            dates = [args.date.replace("-", "")]
         else:
-            print("无数据")
+            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+            dates = [yesterday]
 
-    print(f"\n完成: {fetched} 拉取, {skipped} 跳过, {len(dates) - fetched - skipped} 无数据")
+        fetched = 0
+        skipped = 0
+        errors = 0
+        for date_str in dates:
+            # 检查是否已存在
+            existing = DATA_DIR / f"{date_str}.json"
+            if existing.exists() and not args.summary:
+                print(f"  ⏭ {date_str} 已存在，跳过")
+                skipped += 1
+                continue
+
+            print(f"  📥 拉取 {date_str}...", end=" ")
+            try:
+                data = fetch_date(date_str, args.user)
+            except Exception as e:
+                _log.error(f"fetch_date({date_str}) exception: {e}")
+                print(f"❌ 异常: {e}")
+                errors += 1
+                continue
+
+            if data:
+                print(f"✅ {data['count']} 条记录")
+                if args.summary:
+                    print(summarize(data))
+                if not args.no_save:
+                    try:
+                        path = save_report(date_str, data)
+                        print(f"  💾 存储到 {path}")
+                    except Exception as e:
+                        _log.error(f"save_report({date_str}) error: {e}")
+                        print(f"  ⚠️ 存储失败: {e}")
+                fetched += 1
+            else:
+                print("无数据")
+
+        print(f"\n完成: {fetched} 拉取, {skipped} 跳过, {len(dates) - fetched - skipped - errors} 无数据, {errors} 错误")
+        sys.exit(1 if errors > 0 else 0)
+
+    except Exception as e:
+        import logging
+        logging.getLogger("audio_fetch").error(f"Fatal error: {e}", exc_info=True)
+        print(f"❌ Fatal error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

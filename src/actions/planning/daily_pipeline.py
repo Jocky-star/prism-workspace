@@ -193,101 +193,170 @@ def generate_daily_insights(date_str: str):
 
 
 def main():
+    import logging as _logging
+    _log_dir = WORKSPACE / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _logging.basicConfig(
+        level=_logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            _logging.FileHandler(_log_dir / "daily_pipeline.log", encoding="utf-8"),
+            _logging.StreamHandler(sys.stderr),
+        ],
+    )
+    _log = _logging.getLogger("daily_pipeline")
+
     parser = argparse.ArgumentParser(description="PI 每日管线")
     parser.add_argument("--date", help="指定日期 (YYYYMMDD)")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    state = load_json(STATE_FILE, {"processed_dates": [], "last_run": None})
+    try:
+        state = load_json(STATE_FILE, {"processed_dates": [], "last_run": None})
 
-    # Determine dates
-    if args.date:
-        dates = [args.date]
-    else:
-        dates = get_recent_dates(2)
-
-    if not dates:
-        print("📭 没有新数据")
-        return
-
-    # Filter already processed
-    if not args.force:
-        dates = [d for d in dates if d not in state.get("processed_dates", [])]
-
-    if not dates:
-        print("✅ 最近数据已处理")
-        return
-
-    print(f"🔄 每日管线：处理 {len(dates)} 天 ({', '.join(dates)})")
-
-    # Step 0: Chat data extraction
-    print("\n💬 对话数据采集...")
-    ok, output = run_script("sources/chat/extract.py", ["--recent", "2", "--feed-perception"])
-    if ok:
-        for line in output.splitlines():
-            if "Extracted" in line or "提取" in line:
-                print(f"  ✅ {line.strip()}")
-    else:
-        print(f"  ⚠️ 对话采集: {output[:100]}")
-
-    # Step 1: Perception (audio data)
-    print("\n📡 感知层...")
-    for date_str in dates:
-        ok, output = run_script("intelligence/perception.py", [date_str, "--no-llm"])
-        if ok:
-            print(f"  ✅ {date_str}")
+        # Determine dates
+        if args.date:
+            dates = [args.date]
         else:
-            print(f"  ❌ {date_str}: {output[:100]}")
+            dates = get_recent_dates(2)
+
+        if not dates:
+            print("📭 没有新数据")
             return
 
-    # Step 2: Understanding
-    print("\n🧠 理解层...")
-    ok, output = run_script("intelligence/understand.py", [])
-    if ok:
-        print("  ✅ 统计更新")
-    else:
-        print(f"  ❌ {output[:200]}")
+        # Filter already processed
+        if not args.force:
+            dates = [d for d in dates if d not in state.get("processed_dates", [])]
 
-    # Step 3: Insights (built-in + generator)
-    print("\n💡 洞察生成...")
-    total_insights = 0
-    for date_str in dates:
-        n = generate_daily_insights(date_str)
-        total_insights += n
-        if n > 0:
-            print(f"  💡 {date_str}: {n} 条洞察（内置检测）")
+        if not dates:
+            print("✅ 最近数据已处理")
+            return
 
-    # Step 4: Advanced insight generator
-    ok, output = run_script("actions/planning/generate_insights.py", ["--date", dates[-1]])
-    if ok:
-        for line in output.splitlines():
-            if "条" in line and ("提醒" in line or "偏离" in line or "变化" in line):
-                print(f"  {line.strip()}")
-    else:
-        print(f"  ⚠️ 高级洞察: {output[:100]}")
+        print(f"🔄 每日管线：处理 {len(dates)} 天 ({', '.join(dates)})")
+        step_errors = []
 
-    # Step 5: Action layer
-    print("\n🎬 行动执行...")
-    ok, output = run_script("actions/planning/action.py", [])
-    if ok:
-        for line in output.splitlines():
-            if line.strip().startswith("✅") or line.strip().startswith("⏭️"):
-                print(f"  {line.strip()}")
-    else:
-        print(f"  ⚠️ 行动层: {output[:100]}")
+        # Step 0: Chat data extraction
+        print("\n💬 对话数据采集...")
+        try:
+            ok, output = run_script("sources/chat/extract.py", ["--recent", "2", "--feed-perception"])
+            if ok:
+                for line in output.splitlines():
+                    if "Extracted" in line or "提取" in line:
+                        print(f"  ✅ {line.strip()}")
+            else:
+                _log.warning(f"对话采集非零退出: {output[:200]}")
+                print(f"  ⚠️ 对话采集: {output[:100]}")
+        except Exception as e:
+            _log.error(f"Step 0 (chat extract) error: {e}")
+            step_errors.append(f"chat_extract: {e}")
+            print(f"  ❌ 对话采集异常: {e}")
 
-    # Update state
-    processed = state.get("processed_dates", [])
-    processed.extend(dates)
-    # Keep only last 90 days
-    processed = sorted(set(processed))[-90:]
-    state["processed_dates"] = processed
-    state["last_run"] = datetime.now(TZ).isoformat()
-    state["last_dates"] = dates
-    state["last_insights"] = total_insights
-    atomic_write_json(STATE_FILE, state)
+        # Step 1: Perception (audio data)
+        print("\n📡 感知层...")
+        perception_ok = True
+        for date_str in dates:
+            try:
+                ok, output = run_script("intelligence/perception.py", [date_str, "--no-llm"])
+                if ok:
+                    print(f"  ✅ {date_str}")
+                else:
+                    _log.error(f"Perception failed for {date_str}: {output[:200]}")
+                    print(f"  ❌ {date_str}: {output[:100]}")
+                    step_errors.append(f"perception_{date_str}: {output[:100]}")
+                    perception_ok = False
+            except Exception as e:
+                _log.error(f"Step 1 (perception {date_str}) error: {e}")
+                step_errors.append(f"perception_{date_str}: {e}")
+                print(f"  ❌ {date_str} 感知层异常: {e}")
+                perception_ok = False
 
-    print(f"\n✅ 管线完成：{len(dates)} 天处理，{total_insights} 条洞察")
+        # Step 2: Understanding (continue even if perception failed)
+        print("\n🧠 理解层...")
+        try:
+            ok, output = run_script("intelligence/understand.py", [])
+            if ok:
+                print("  ✅ 统计更新")
+            else:
+                _log.warning(f"Understanding non-zero: {output[:200]}")
+                print(f"  ⚠️ {output[:200]}")
+                step_errors.append(f"understand: {output[:100]}")
+        except Exception as e:
+            _log.error(f"Step 2 (understand) error: {e}")
+            step_errors.append(f"understand: {e}")
+            print(f"  ❌ 理解层异常: {e}")
+
+        # Step 3: Insights (built-in + generator)
+        print("\n💡 洞察生成...")
+        total_insights = 0
+        for date_str in dates:
+            try:
+                n = generate_daily_insights(date_str)
+                total_insights += n
+                if n > 0:
+                    print(f"  💡 {date_str}: {n} 条洞察（内置检测）")
+            except Exception as e:
+                _log.error(f"Step 3 (insights {date_str}) error: {e}")
+                step_errors.append(f"insights_{date_str}: {e}")
+                print(f"  ⚠️ 洞察生成异常 {date_str}: {e}")
+
+        # Step 4: Advanced insight generator
+        try:
+            ok, output = run_script("actions/planning/generate_insights.py", ["--date", dates[-1]])
+            if ok:
+                for line in output.splitlines():
+                    if "条" in line and ("提醒" in line or "偏离" in line or "变化" in line):
+                        print(f"  {line.strip()}")
+            else:
+                _log.warning(f"Advanced insights: {output[:200]}")
+                print(f"  ⚠️ 高级洞察: {output[:100]}")
+        except Exception as e:
+            _log.error(f"Step 4 (generate_insights) error: {e}")
+            step_errors.append(f"generate_insights: {e}")
+            print(f"  ⚠️ 高级洞察异常: {e}")
+
+        # Step 5: Action layer
+        print("\n🎬 行动执行...")
+        try:
+            ok, output = run_script("actions/planning/action.py", [])
+            if ok:
+                for line in output.splitlines():
+                    if line.strip().startswith("✅") or line.strip().startswith("⏭️"):
+                        print(f"  {line.strip()}")
+            else:
+                _log.warning(f"Action layer: {output[:200]}")
+                print(f"  ⚠️ 行动层: {output[:100]}")
+        except Exception as e:
+            _log.error(f"Step 5 (action) error: {e}")
+            step_errors.append(f"action: {e}")
+            print(f"  ⚠️ 行动层异常: {e}")
+
+        # Update state (always, even if some steps failed)
+        try:
+            processed = state.get("processed_dates", [])
+            processed.extend(dates)
+            # Keep only last 90 days
+            processed = sorted(set(processed))[-90:]
+            state["processed_dates"] = processed
+            state["last_run"] = datetime.now(TZ).isoformat()
+            state["last_dates"] = dates
+            state["last_insights"] = total_insights
+            state["last_step_errors"] = step_errors
+            atomic_write_json(STATE_FILE, state)
+        except Exception as e:
+            _log.error(f"Failed to save state: {e}")
+
+        if step_errors:
+            _log.warning(f"管线完成但有 {len(step_errors)} 个步骤失败: {step_errors}")
+            print(f"\n⚠️ 管线完成（{len(step_errors)} 步骤有错误）：{len(dates)} 天处理，{total_insights} 条洞察")
+        else:
+            print(f"\n✅ 管线完成：{len(dates)} 天处理，{total_insights} 条洞察")
+
+        sys.exit(1 if step_errors else 0)
+
+    except Exception as e:
+        _log.error(f"Daily pipeline fatal error: {e}", exc_info=True)
+        print(f"❌ 管线致命错误: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -202,33 +202,70 @@ def generate_weekly_report(api):
 
 
 def main():
+    import logging as _logging
+    _log_dir = WORKSPACE / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _logging.basicConfig(
+        level=_logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            _logging.FileHandler(_log_dir / "weekly_refine.log", encoding="utf-8"),
+            _logging.StreamHandler(sys.stderr),
+        ],
+    )
+    _log = _logging.getLogger("weekly_refine")
+
     parser = argparse.ArgumentParser(description="PI 周精炼+报告")
     parser.add_argument("--report-only", action="store_true")
     parser.add_argument("--model", default="pa/claude-haiku-4-5-20251001")
     args = parser.parse_args()
 
     print(f"📅 周度精炼 (model: {args.model})")
+    exit_code = 0
 
-    if not args.report_only:
-        print("\n🧠 运行 LLM 精炼...")
-        ok = run_refine()
-        if not ok:
-            print("  ⚠️ 精炼有问题，继续生成报告")
+    try:
+        if not args.report_only:
+            print("\n🧠 运行 LLM 精炼...")
+            try:
+                ok = run_refine()
+                if not ok:
+                    _log.warning("LLM 精炼有问题，继续生成报告")
+                    print("  ⚠️ 精炼有问题，继续生成报告")
+                    exit_code = 1
+            except Exception as e:
+                _log.error(f"run_refine error: {e}", exc_info=True)
+                print(f"  ❌ 精炼异常: {e}")
+                exit_code = 1
 
-    api = load_api_config(args.model)
-    if not api:
-        print("❌ 无法加载 API")
-        return
+        api = load_api_config(args.model)
+        if not api:
+            _log.error("无法加载 API 配置")
+            print("❌ 无法加载 API")
+            sys.exit(1)
 
-    print("\n📝 生成周报...")
-    report = generate_weekly_report(api)
-    if report:
-        print(f"\n{'='*50}")
-        print(report)
-        print(f"{'='*50}")
-        print("\n✅ 周报已保存")
-    else:
-        print("  ❌ 周报生成失败")
+        print("\n📝 生成周报...")
+        try:
+            report = generate_weekly_report(api)
+            if report:
+                print(f"\n{'='*50}")
+                print(report)
+                print(f"{'='*50}")
+                print("\n✅ 周报已保存")
+            else:
+                _log.error("周报生成返回 None")
+                print("  ❌ 周报生成失败")
+                exit_code = 1
+        except Exception as e:
+            _log.error(f"generate_weekly_report error: {e}", exc_info=True)
+            print(f"  ❌ 周报生成异常: {e}")
+            exit_code = 1
+
+        sys.exit(exit_code)
+
+    except Exception as e:
+        _log.error(f"Weekly refine fatal error: {e}", exc_info=True)
+        print(f"❌ 致命错误: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

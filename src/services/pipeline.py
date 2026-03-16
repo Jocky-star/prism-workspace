@@ -247,6 +247,19 @@ def run_all(date: str, dry_run: bool = False) -> Dict[str, PipelineResult]:
 
 
 if __name__ == "__main__":
+    import logging as _logging
+    _log_dir = WORKSPACE / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _logging.basicConfig(
+        level=_logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            _logging.FileHandler(_log_dir / "pipeline.log", encoding="utf-8"),
+            _logging.StreamHandler(sys.stderr),
+        ],
+    )
+    _log = _logging.getLogger("pipeline")
+
     parser = argparse.ArgumentParser(description="Service pipeline orchestrator")
     parser.add_argument(
         "--date",
@@ -272,37 +285,49 @@ if __name__ == "__main__":
         print(prefs.generate_menu())
         sys.exit(0)
 
-    prefs = ServicePreferences()
+    try:
+        prefs = ServicePreferences()
 
-    # First-run onboarding check
-    if prefs.is_first_run() and not args.dry_run:
+        # First-run onboarding check
+        if prefs.is_first_run() and not args.dry_run:
+            print("\n" + "="*50)
+            print("FIRST RUN — Showing onboarding menu")
+            print("="*50)
+            print(prefs.generate_onboarding_message())
+            prefs.mark_onboarded()
+            print("\n(Proceeding with default settings — all enabled)")
+            print("="*50 + "\n")
+
+        results: Dict[str, PipelineResult] = {}
+
+        if args.pipeline == "all":
+            results = run_all(args.date, dry_run=args.dry_run)
+        elif args.pipeline == "daily":
+            results["daily"] = run_daily(args.date, dry_run=args.dry_run, prefs=prefs)
+        elif args.pipeline == "morning":
+            results["morning"] = run_morning_push(args.date, dry_run=args.dry_run, prefs=prefs)
+        elif args.pipeline == "weekly":
+            results["weekly"] = run_weekly(args.date, dry_run=args.dry_run, prefs=prefs)
+
+        # Summary
         print("\n" + "="*50)
-        print("FIRST RUN — Showing onboarding menu")
+        print("PIPELINE SUMMARY")
         print("="*50)
-        print(prefs.generate_onboarding_message())
-        prefs.mark_onboarded()
-        print("\n(Proceeding with default settings — all enabled)")
-        print("="*50 + "\n")
+        has_errors = False
+        for name, p in results.items():
+            d = p.to_dict()
+            status = "✅" if d["success"] else "⚠️"
+            print(f"{status} {name}: {len(d['steps'])} steps, {len(d['errors'])} errors")
+            for err in d.get("errors", []):
+                print(f"     ✗ {err}")
+                _log.warning(f"Pipeline step error [{name}]: {err}")
+            if not d["success"]:
+                has_errors = True
+        print("="*50)
 
-    results: Dict[str, PipelineResult] = {}
+        sys.exit(1 if has_errors else 0)
 
-    if args.pipeline == "all":
-        results = run_all(args.date, dry_run=args.dry_run)
-    elif args.pipeline == "daily":
-        results["daily"] = run_daily(args.date, dry_run=args.dry_run, prefs=prefs)
-    elif args.pipeline == "morning":
-        results["morning"] = run_morning_push(args.date, dry_run=args.dry_run, prefs=prefs)
-    elif args.pipeline == "weekly":
-        results["weekly"] = run_weekly(args.date, dry_run=args.dry_run, prefs=prefs)
-
-    # Summary
-    print("\n" + "="*50)
-    print("PIPELINE SUMMARY")
-    print("="*50)
-    for name, p in results.items():
-        d = p.to_dict()
-        status = "✅" if d["success"] else "⚠️"
-        print(f"{status} {name}: {len(d['steps'])} steps, {len(d['errors'])} errors")
-        for err in d.get("errors", []):
-            print(f"     ✗ {err}")
-    print("="*50)
+    except Exception as e:
+        _log.error(f"Pipeline fatal error: {e}", exc_info=True)
+        print(f"❌ Pipeline fatal error: {e}", file=sys.stderr)
+        sys.exit(1)
