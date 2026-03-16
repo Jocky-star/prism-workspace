@@ -396,6 +396,192 @@ def cmd_cron_setup():
     print("\n修改时间？编辑 config.yaml 的 schedule 段，然后重新运行 python3 main.py cron-setup\n")
 
 
+# ── 插件命令 ──────────────────────────────────────────────
+
+def cmd_plugins_list():
+    """列出所有已安装的插件"""
+    from prism.plugin_registry import PluginRegistry
+    registry = PluginRegistry()
+    by_type = registry.discover_by_type()
+
+    print("\n📦 已安装插件：\n")
+
+    type_labels = {
+        "source": "数据源 (Source)",
+        "pipeline": "管线 (Pipeline)",
+        "actuator": "执行器 (Actuator)",
+    }
+
+    any_found = False
+    for type_key, label in type_labels.items():
+        plugins = by_type.get(type_key, [])
+        if not plugins:
+            continue
+        any_found = True
+        print(f"  {label}:")
+        for manifest in plugins:
+            name = manifest.get("id", manifest.get("name", "?"))
+            desc = manifest.get("description", "")
+            # 截断描述
+            if len(desc) > 20:
+                desc = desc[:20] + "…"
+            status = registry._get_plugin_status(manifest)
+            if status == "enabled":
+                status_icon = "✅ 已启用"
+            elif status == "configured":
+                status_icon = "✅ 已配置"
+            elif status == "disabled":
+                status_icon = "⏸ 已禁用"
+            else:
+                status_icon = "❌ 未配置"
+            print(f"    {name:<16} {status_icon:<12}  {desc}")
+        print()
+
+    if not any_found:
+        print("  （未找到任何插件）")
+        print("\n  💡 安装示例插件后再试，或查看 plugins/ 目录结构\n")
+    print()
+
+
+def cmd_plugins_info(name: str):
+    """显示插件详情"""
+    from prism.plugin_registry import PluginRegistry
+    registry = PluginRegistry()
+    manifest = registry.get_manifest(name)
+
+    if not manifest:
+        print(f"\n❌ 未找到插件: {name}\n")
+        print("  运行 python3 main.py plugins list 查看已安装插件")
+        sys.exit(1)
+
+    ptype = manifest.get("type", manifest.get("_type_dir", "unknown"))
+    version = manifest.get("version", "1.0.0")
+    desc = manifest.get("description", "")
+
+    print(f"\n📋 {name} ({ptype})\n")
+    print(f"  描述: {desc}")
+    print(f"  版本: {version}")
+
+    # 配置项
+    config_fields = manifest.get("config", {})
+    if config_fields:
+        print("\n  需要配置:")
+        for field_name, field_info in config_fields.items():
+            if isinstance(field_info, dict):
+                required = field_info.get("required", False)
+                default = field_info.get("default", None)
+                field_desc = field_info.get("description", "")
+                help_url = field_info.get("help_url", field_info.get("获取", ""))
+                req_str = "必填" if required else f"可选, 默认: {default}"
+                print(f"    {field_name} ({req_str}) — {field_desc}")
+                if help_url:
+                    print(f"      获取: {help_url}")
+            else:
+                print(f"    {field_name}: {field_info}")
+
+    # 输出字段
+    output_fields = manifest.get("output_fields", [])
+    if output_fields:
+        print("\n  输出字段:")
+        for field in output_fields:
+            if isinstance(field, dict):
+                fname = field.get("name", "")
+                ftype = field.get("type", "")
+                fdesc = field.get("description", "")
+                print(f"    {fname} ({ftype}) — {fdesc}")
+
+    # 定时任务
+    schedules = manifest.get("schedule", [])
+    if schedules:
+        print("\n  定时任务:")
+        for sched in schedules:
+            if isinstance(sched, dict):
+                cron = sched.get("cron", "")
+                sdesc = sched.get("description", "")
+                print(f"    {cron} — {sdesc}")
+            else:
+                print(f"    {sched}")
+
+    # 能力
+    caps = manifest.get("capabilities", {})
+    if caps:
+        print("\n  能力:")
+        skills = caps.get("skills", [])
+        if skills:
+            if isinstance(skills, list):
+                print(f"    Skills: {', '.join(skills)}")
+            else:
+                print(f"    Skills: {skills}")
+        mcp = caps.get("mcp", {})
+        if mcp:
+            if isinstance(mcp, dict):
+                mcp_name = mcp.get("name", "")
+                tools = mcp.get("tools", [])
+                print(f"    MCP: {mcp_name} ({len(tools)} tools)")
+            else:
+                print(f"    MCP: {mcp}")
+    print()
+
+
+def cmd_plugins_verify(name: str):
+    """验证插件配置"""
+    from prism.plugin_registry import PluginRegistry
+    registry = PluginRegistry()
+
+    print(f"\n🔍 验证插件: {name}\n")
+
+    manifest = registry.get_manifest(name)
+    if not manifest:
+        print(f"  ❌ 未找到插件: {name}\n")
+        sys.exit(1)
+
+    print(f"  插件类型: {manifest.get('type', manifest.get('_type_dir', '?'))}")
+    print(f"  版本: {manifest.get('version', '?')}")
+
+    success = registry.verify(name)
+    if success:
+        print(f"\n  ✅ 插件 {name} 配置验证通过\n")
+    else:
+        print(f"\n  ❌ 插件 {name} 配置验证失败\n")
+        print("  💡 检查 config.yaml 中是否有该插件的配置，或查看错误信息\n")
+        sys.exit(1)
+
+
+def cmd_capabilities():
+    """汇总所有插件的能力列表"""
+    from prism.plugin_registry import PluginRegistry
+    registry = PluginRegistry()
+    caps = registry.get_capabilities()
+
+    print("\n🔌 Prism 能力汇总\n")
+
+    skills = caps.get("skills", [])
+    if skills:
+        print("  📚 Agent Skills:")
+        for skill in skills:
+            print(f"    • {skill}")
+        print()
+
+    mcp_list = caps.get("mcp", [])
+    if mcp_list:
+        print("  🛠 MCP 工具:")
+        for mcp in mcp_list:
+            if isinstance(mcp, dict):
+                mcp_name = mcp.get("name", "?")
+                tools = mcp.get("tools", [])
+                print(f"    • {mcp_name}")
+                for tool in tools:
+                    print(f"        - {tool}")
+        print()
+
+    by_plugin = caps.get("by_plugin", {})
+    if not by_plugin:
+        print("  （未发现任何插件能力）")
+        print("\n  💡 安装插件后在 manifest.yaml 中声明 capabilities 字段\n")
+    else:
+        print(f"  共 {len(by_plugin)} 个插件提供能力，{len(skills)} 个 Skills，{len(mcp_list)} 个 MCP 服务\n")
+
+
 # ── 主入口 ────────────────────────────────────────────────
 
 def main():
@@ -410,6 +596,10 @@ def main():
   cron-setup         自动设置所有定时任务
   brief              生成并推送 Brief
   brief --dry-run    预览 Brief（不推送）
+  plugins list       列出所有已安装插件
+  plugins info <名>  显示插件详情
+  plugins verify <名> 验证插件配置
+  capabilities       汇总所有插件能力
 
 首次使用？运行 python3 main.py setup
 完成基础配置后运行 python3 main.py guide 查看进阶配置
@@ -421,10 +611,20 @@ def main():
     sub.add_parser("status", help="查看系统状态")
     sub.add_parser("guide", help="分阶段配置引导（数据源/管线/硬件）")
     sub.add_parser("cron-setup", help="自动设置所有定时任务")
+    sub.add_parser("capabilities", help="汇总所有插件的能力列表")
 
     brief_p = sub.add_parser("brief", help="生成并推送 Brief")
     brief_p.add_argument("--dry-run", action="store_true", help="预览不推送")
     brief_p.add_argument("--date", default=None, help="日期 YYYY-MM-DD（默认昨天）")
+
+    # plugins 子命令组
+    plugins_p = sub.add_parser("plugins", help="插件管理")
+    plugins_sub = plugins_p.add_subparsers(dest="plugins_command")
+    plugins_sub.add_parser("list", help="列出所有已安装插件")
+    plugins_info_p = plugins_sub.add_parser("info", help="显示插件详情")
+    plugins_info_p.add_argument("name", help="插件名称")
+    plugins_verify_p = plugins_sub.add_parser("verify", help="验证插件配置")
+    plugins_verify_p.add_argument("name", help="插件名称")
 
     args = parser.parse_args()
 
@@ -436,8 +636,19 @@ def main():
         cmd_guide()
     elif args.command == "cron-setup":
         cmd_cron_setup()
+    elif args.command == "capabilities":
+        cmd_capabilities()
     elif args.command == "brief":
         cmd_brief(dry_run=args.dry_run, date=args.date)
+    elif args.command == "plugins":
+        if args.plugins_command == "list":
+            cmd_plugins_list()
+        elif args.plugins_command == "info":
+            cmd_plugins_info(args.name)
+        elif args.plugins_command == "verify":
+            cmd_plugins_verify(args.name)
+        else:
+            plugins_p.print_help()
     elif args.command is None:
         # 首次运行：检查是否有配置
         if CONFIG_PATH.exists():

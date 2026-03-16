@@ -1,0 +1,57 @@
+id: example-health
+name: example-health
+type: source
+version: 1.0.0
+description: 示例健康数据源（mock 数据，用于开发和测试）
+
+# 配置项
+config:
+  api_token:
+    required: false
+    default: ""
+    description: "外部健康服务 API Token（示例插件不需要真实 Token）"
+  sync_interval:
+    required: false
+    default: "daily"
+    description: "同步频率：daily | hourly"
+  mock_mode:
+    required: false
+    default: true
+    description: "是否使用 mock 数据（开发用）"
+
+# 输出字段
+output_fields:
+  - name: date
+    type: string
+    description: "数据日期 YYYY-MM-DD"
+  - name: steps
+    type: number
+    description: "当日步数"
+  - name: sleep_score
+    type: number
+    description: "睡眠质量 0-100"
+  - name: heart_rate_avg
+    type: number
+    description: "日均心率 bpm"
+  - name: calories
+    type: number
+    description: "消耗卡路里 kcal"
+  - name: active_minutes
+    type: number
+    description: "活跃分钟数"
+
+# 定时任务建议
+schedule:
+  - cron: "0 6 * * *"
+    description: "每天早上6点同步昨日数据"
+
+# 插件能力（供 Agent 使用）
+capabilities:
+  skills:
+    - example-health-skill
+  mcp:
+    name: example-health-mcp
+    tools:
+      - get_daily_health
+      - get_health_trend
+      - get_sleep_analysis
