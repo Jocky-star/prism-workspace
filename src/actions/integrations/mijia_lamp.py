@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 
 log = logging.getLogger("prism.lamp")
@@ -27,6 +28,45 @@ _last_set_props = {}       # 上次自动设的属性（on/brightness/color_temp
 _manual_override_until = 0  # 手动操作保护截止时间（timestamp）
 MIN_INTERVAL = 30           # 同一场景最少间隔30秒，避免频繁调用
 MANUAL_PROTECT_SECS = 1800  # 手动保护期30分钟
+
+
+def _get_log_path() -> Path:
+    """获取日志路径（workspace/memory/lamp_log.jsonl）"""
+    here = Path(__file__).resolve()
+    # integrations/mijia_lamp.py → integrations → actions → src → workspace
+    workspace = here.parents[3]
+    return workspace / "memory" / "lamp_log.jsonl"
+
+
+def _log_state_change(source: str, props: dict, hour: int) -> None:
+    """记录台灯状态变化到 lamp_log.jsonl
+    
+    Args:
+        source: "auto" | "manual" | "init"
+        props: 当前属性字典（on, brightness, color_temp, scene 等）
+        hour: 当前小时
+    """
+    try:
+        log_path = _get_log_path()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        entry = {
+            "ts": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "source": source,
+            "on": props.get("on"),
+            "brightness": props.get("brightness"),
+            "color_temp": props.get("color_temp"),
+            "hour": hour,
+            "scene": props.get("scene"),
+        }
+        
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        
+        log.debug(f"台灯状态已记录: source={source}, hour={hour}, scene={props.get('scene')}")
+    except Exception as e:
+        # 日志失败不影响灯控制
+        log.debug(f"台灯状态记录失败（不影响控制）: {e}")
 
 
 def _get_api():
@@ -68,6 +108,11 @@ def _check_manual_override() -> bool:
             if _last_set_props[key] != current[key]:
                 _manual_override_until = now + MANUAL_PROTECT_SECS
                 log.info(f"🖐️ 检测到手动操作（{key}: {_last_set_props[key]}→{current[key]}），保护 {MANUAL_PROTECT_SECS//60} 分钟")
+                # 记录手动操作
+                import datetime as _dt
+                _tz = _dt.timezone(_dt.timedelta(hours=8))
+                _hour = _dt.datetime.now(_tz).hour
+                _log_state_change("manual", current, _hour)
                 return True
     
     return False
@@ -124,6 +169,11 @@ def set_scene(scene_name: str, force: bool = False) -> bool:
             # 记录本次自动设置的属性，用于后续检测手动操作
             _last_set_props = dict(scene)
             log.info(f"台灯场景切换: {scene_name}")
+            # 记录状态变化日志
+            import datetime as _dt
+            _tz = _dt.timezone(_dt.timedelta(hours=8))
+            _hour = _dt.datetime.now(_tz).hour
+            _log_state_change("auto", {**scene, "scene": scene_name}, _hour)
         else:
             log.warning(f"台灯设置部分失败: {result}")
         return success
@@ -198,3 +248,20 @@ def determine_scene(present: bool, hour: int) -> str:
         return "relax"      # 晚间：休息
     else:
         return "night"      # 深夜：极暗
+
+
+def log_init_state() -> None:
+    """daemon 启动时查询并记录台灯当前状态（init 事件）"""
+    try:
+        import datetime as _dt
+        _tz = _dt.timezone(_dt.timedelta(hours=8))
+        hour = _dt.datetime.now(_tz).hour
+        
+        status = get_status()
+        if status:
+            _log_state_change("init", status, hour)
+            log.info(f"台灯初始状态已记录: {status}")
+        else:
+            log.debug("台灯初始状态查询失败，跳过记录")
+    except Exception as e:
+        log.debug(f"台灯 init 状态记录失败: {e}")

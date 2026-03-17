@@ -41,6 +41,12 @@ class Plugin(DevicePlugin):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         _ensure_integrations_path()
+        # 记录 init 状态（daemon 启动时查一次灯）
+        try:
+            from mijia_lamp import log_init_state
+            log_init_state()
+        except Exception as e:
+            log.debug(f"台灯 init 状态记录失败: {e}")
 
     def on_present(self, hour: int):
         """有人来了 → 根据时段开灯/调光"""
@@ -51,6 +57,7 @@ class Plugin(DevicePlugin):
             success = set_scene(scene)
             if success:
                 log.info(f"✅ 台灯已切换: {scene}")
+                # _log_state_change 已在 set_scene() 成功后自动调用
             else:
                 log.warning(f"台灯切换失败: {scene}")
         except ImportError:
@@ -70,6 +77,7 @@ class Plugin(DevicePlugin):
             success = set_scene(scene)
             if success:
                 log.info(f"✅ 台灯已切换: {scene}")
+                # _log_state_change 已在 set_scene() 成功后自动调用
             else:
                 log.warning(f"台灯切换失败: {scene}")
         except ImportError:

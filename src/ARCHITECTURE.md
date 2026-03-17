@@ -1,5 +1,35 @@
 # src/ — 代码架构说明
 
+## 被动数据采集设计原则
+
+> **被动采集 > 主动询问**
+>
+> 每一次用户操作都是偏好信号。系统应该：
+> 1. 记录所有可观测的用户行为（灯调节、设备操作、时间模式）
+> 2. 从行为中提炼偏好规则（不靠用户主动告知）
+> 3. 用规则自动优化体验（闭环）
+> 4. 规则可解释、可覆盖（用户随时能停/改）
+>
+> 适用范围：台灯、屏幕亮度、推送时间、Brief 内容偏好、音乐等所有可自适应的服务。
+
+### 台灯数据流示例
+
+```
+用户手动调节台灯
+       ↓
+_check_manual_override() 检测到差异
+       ↓
+_log_state_change("manual", current_status, hour)
+       ↓
+memory/lamp_log.jsonl  （行为原始记录）
+       ↓ 每周 lamp_preference_learner.py
+memory/lamp_preference_suggestions.json  （建议规则）
+       ↓ apply_suggestions()（高置信度自动应用）
+memory/device_preferences.json           （生效规则）
+       ↓ determine_scene() 读取
+台灯自动按偏好调节  ✅
+```
+
 ## 目录分层
 
 ```
@@ -31,6 +61,7 @@ src/
 │   ├── preference_learner.py #  偏好学习
 │   ├── feedback_tracker.py #   反馈追踪
 │   ├── device_preferences.py # 设备控制偏好
+│   ├── lamp_preference_learner.py # 台灯偏好学习（被动采集→规则提炼）
 │   └── generators/         #   内容生成器
 │       ├── daily_brief.py  #   晨间简报
 │       ├── meeting_insight.py # 会议洞察
