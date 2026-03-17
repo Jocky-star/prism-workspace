@@ -260,6 +260,19 @@ def main():
             print(f"  ❌ 周报生成异常: {e}")
             exit_code = 1
 
+        # ── 写入 action_log ───────────────────────────────────
+        try:
+            from src.services.action_log import log_action as _log_action
+            _log_action(
+                "pipeline",
+                "周精炼完成",
+                f"人物/关系/意图清理完毕，周报已生成，状态码 {exit_code}",
+                source="weekly_refine",
+            )
+        except Exception as _e:
+            _log.warning(f"action_log 写入失败: {_e}")
+        # ─────────────────────────────────────────────────────
+
         sys.exit(exit_code)
 
     except Exception as e:

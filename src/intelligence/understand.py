@@ -546,6 +546,19 @@ def main():
     print("\n✅ 理解层完成")
     print_stats()
 
+    # ── 写入 action_log ───────────────────────────────────
+    try:
+        from src.services.action_log import log_action as _log_action
+        _log_action(
+            "pipeline",
+            "理解层分析完成",
+            "用户画像、社交图谱、行为模式已更新",
+            source="understand",
+        )
+    except Exception as _e:
+        print(f"  ⚠️ action_log 写入失败: {_e}", file=sys.stderr)
+    # ─────────────────────────────────────────────────────
+
 
 if __name__ == "__main__":
     main()

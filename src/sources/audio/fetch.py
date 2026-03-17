@@ -159,6 +159,23 @@ def main():
                 print("无数据")
 
         print(f"\n完成: {fetched} 拉取, {skipped} 跳过, {len(dates) - fetched - skipped - errors} 无数据, {errors} 错误")
+
+        # ── 写入 action_log ───────────────────────────────────
+        try:
+            _pkg_root = Path(__file__).resolve().parent.parent.parent
+            if str(_pkg_root) not in sys.path:
+                sys.path.insert(0, str(_pkg_root))
+            from src.services.action_log import log_action as _log_action
+            _log_action(
+                "pipeline",
+                "录音数据拉取完成",
+                f"新拉取 {fetched} 天，跳过 {skipped} 天，错误 {errors} 个",
+                source="audio_fetch",
+            )
+        except Exception as _e:
+            print(f"  ⚠️ action_log 写入失败: {_e}", file=sys.stderr)
+        # ─────────────────────────────────────────────────────
+
         sys.exit(1 if errors > 0 else 0)
 
     except Exception as e:

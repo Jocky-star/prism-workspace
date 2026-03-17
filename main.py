@@ -51,16 +51,15 @@ def cmd_setup():
         print("\n需要修改配置？直接编辑 config.yaml，或删除后重新运行 setup。")
         print("\n当前状态：")
         cmd_status()
-        return
+    else:
+        if not CONFIG_EXAMPLE.exists():
+            print("❌ 未找到 config.example.yaml，请确认项目完整 clone。")
+            sys.exit(1)
 
-    if not CONFIG_EXAMPLE.exists():
-        print("❌ 未找到 config.example.yaml，请确认项目完整 clone。")
-        sys.exit(1)
-
-    import shutil
-    shutil.copy(CONFIG_EXAMPLE, CONFIG_PATH)
-    print(f"\n✅ 已从模板创建 config.yaml")
-    print("""
+        import shutil
+        shutil.copy(CONFIG_EXAMPLE, CONFIG_PATH)
+        print(f"\n✅ 已从模板创建 config.yaml")
+        print("""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📝 请编辑 config.yaml，填入以下必填项：
 
@@ -79,6 +78,52 @@ def cmd_setup():
 填完之后运行：
    python3 main.py status          验证配置
    python3 main.py brief --dry-run 预览第一份 Brief
+""")
+
+    # 服务池初始化
+    _setup_service_pool()
+
+
+def _setup_service_pool():
+    """初始化服务池：如果 memory/service_pool.json 不存在，从模板复制。"""
+    import shutil as _shutil
+
+    service_pool_path = WORKSPACE / "memory" / "service_pool.json"
+    template_path = WORKSPACE / "src" / "templates" / "service_pool.example.json"
+
+    # 读取 config 判断是否 auto_init
+    cfg = _read_yaml(CONFIG_PATH) if CONFIG_PATH.exists() else {}
+    sp_cfg = cfg.get("service_pool", {})
+    auto_init = sp_cfg.get("auto_init", "true")
+    if str(auto_init).lower() in ("false", "0", "no"):
+        return
+
+    if service_pool_path.exists():
+        print(f"\n📋 服务池已存在：{service_pool_path}")
+        return
+
+    if not template_path.exists():
+        print(f"\n⚠️  服务池模板未找到（{template_path}），跳过服务池初始化")
+        return
+
+    service_pool_path.parent.mkdir(parents=True, exist_ok=True)
+    _shutil.copy(template_path, service_pool_path)
+    print(f"\n✅ 已初始化服务池：{service_pool_path}")
+    print("""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 服务池说明：
+
+   服务池定义了 Agent 在每晚自主执行时段应该做哪些事。
+   模板中已包含 6 个示例服务，其中部分处于 paused（暂停）状态。
+
+   按需修改 memory/service_pool.json：
+   • 删除不需要的服务
+   • 修改 description 为具体任务说明
+   • 把 "status": "paused" 改为 "active" 来启用
+   • 调整 priority（1-10）和 cooldown_days
+
+   注意：memory/service_pool.json 不入 git（包含个人化内容）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 
 
@@ -303,11 +348,29 @@ def cmd_guide():
 # ── 定时任务设置 (cron-setup) ─────────────────────────────
 
 def cmd_cron_setup():
-    """自动写入 crontab，幂等操作（重复运行不会重复添加）。"""
+    """自动写入 crontab，幂等操作（重复运行不会重复添加）。
+    同时输出 OpenClaw cron 配置说明，供 Agent 配置 jobs.json。
+    """
     import subprocess
 
     python = sys.executable
     workspace = str(WORKSPACE)
+
+    # 从 config.yaml 读取 nightly 配置
+    cfg = _read_yaml(CONFIG_PATH) if CONFIG_PATH.exists() else {}
+    nightly_cfg = cfg.get("nightly", {})
+    nightly_enabled = str(nightly_cfg.get("enabled", "true")).lower() not in ("false", "0", "no")
+    nightly_schedule = nightly_cfg.get("schedule", "30 0 * * *")
+    nightly_model = nightly_cfg.get("model", "litellm/pa/claude-sonnet-4-6")
+    nightly_timeout = nightly_cfg.get("timeout_seconds", "25200")
+
+    # 读取 nightly prompt 模板
+    nightly_prompt_path = WORKSPACE / "src" / "prompts" / "nightly_execution.md"
+    nightly_prompt = ""
+    if nightly_prompt_path.exists():
+        nightly_prompt = nightly_prompt_path.read_text(encoding="utf-8")
+    else:
+        nightly_prompt = "（未找到 src/prompts/nightly_execution.md，请检查项目完整性）"
 
     # 每条 cron 任务定义：(标记, 时间表达式, 命令, 描述)
     cron_entries = [
@@ -343,7 +406,7 @@ def cmd_cron_setup():
         ),
     ]
 
-    print("\n📅 设置定时任务...\n")
+    print("\n📅 设置系统 crontab（兜底）...\n")
 
     # 读取现有 crontab
     try:
@@ -373,8 +436,8 @@ def cmd_cron_setup():
         print(f"❌ 写入 crontab 失败：{proc.stderr}")
         sys.exit(1)
 
-    # 输出结果
-    print("已添加：")
+    # 输出系统 crontab 结果
+    print("系统 crontab 已添加：")
     labels = {
         "prism:audio-fetch":     "22:45 — 录音数据拉取",
         "prism:daily-pipeline":  "23:10 — 每日智能管线",
@@ -393,7 +456,50 @@ def cmd_cron_setup():
         for line in prism_lines:
             print(f"  {line}")
 
-    print("\n修改时间？编辑 config.yaml 的 schedule 段，然后重新运行 python3 main.py cron-setup\n")
+    # ── OpenClaw Cron 配置指南 ──────────────────────────────
+    print("""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌟 OpenClaw Cron 配置指南
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+OpenClaw Cron 是 AI Agent 的定时任务，比系统 crontab 更强大
+（可调用 LLM、有 session 上下文、推送飞书消息）。
+
+⚠️  OpenClaw cron 不能通过命令行自动创建，需要通过以下方式之一：
+  1. 在飞书/Telegram 对话中告诉 Agent，由 Agent 调用 gateway API 创建
+  2. 手动编辑 ~/.openclaw/cron/jobs.json
+""")
+
+    print("📋 需要创建的 OpenClaw Cron 任务：\n")
+
+    if nightly_enabled:
+        print(f"""  【每晚自主执行】
+  名称：每晚自主学习
+  计划：{nightly_schedule}（Asia/Shanghai）
+  模型：{nightly_model}
+  超时：{nightly_timeout}s
+  Prompt：（见下方）
+""")
+
+    print("""  【晨间 Brief 推送（备用）】
+  名称：晨间 Brief
+  计划：30 8 * * *（Asia/Shanghai）
+  模型：litellm/pa/claude-haiku-4-5
+  超时：120s
+  Prompt：cd ~/workspace && python3 main.py brief
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 每晚自主执行 Prompt（来自 src/prompts/nightly_execution.md）：
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+""")
+    print(nightly_prompt)
+
+    print("""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 下一步：把上述 Prompt 告诉你的 Agent，让 ta 帮你在 OpenClaw 中创建 cron 任务。
+例如："帮我创建一个每晚 00:30 运行的 cron，用上面的 prompt，模型用 claude-sonnet-4-6，超时 7 小时。"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+""")
 
 
 # ── 插件命令 ──────────────────────────────────────────────

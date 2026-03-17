@@ -71,3 +71,20 @@ system:
   workspace: "~/.openclaw/workspace"
   # 日志级别：DEBUG / INFO / WARNING
   log_level: "INFO"
+
+# ── 每晚自主执行（nightly execution）──────────────────────────────────────────
+nightly:
+  # 是否启用每晚自主学习 cron（需要 OpenClaw cron / jobs.json 支持）
+  enabled: true
+  # cron 时间表达式（默认每天 00:30，Asia/Shanghai）
+  schedule: "30 0 * * *"
+  # 执行使用的模型（支持 litellm 格式）
+  model: "litellm/pa/claude-sonnet-4-6"
+  # 最大执行时间（秒）。7 小时 = 25200s
+  timeout_seconds: 25200
+
+# ── 服务池（service pool）──────────────────────────────────────────────────────
+service_pool:
+  # setup 时如果 memory/service_pool.json 不存在，自动从模板复制
+  auto_init: true
+

@@ -267,6 +267,19 @@ def main():
             feishu_ok = push_to_feishu(msg)
             if feishu_ok:
                 log.info("✅ Feishu push succeeded")
+                # 推送成功后，标记 action_log 中已展示的条目
+                try:
+                    from src.services.generators.daily_brief import mark_action_log_displayed
+                    marked = mark_action_log_displayed(date)
+                    log.info(f"✅ Marked {marked} action_log entries as displayed for {date}")
+                    # 昨天的日志也需要标记（Brief 同时读取昨天和今天）
+                    from datetime import datetime as _dt, timedelta as _td
+                    prev_date = (_dt.strptime(date, "%Y-%m-%d") - _td(days=1)).strftime("%Y-%m-%d")
+                    marked_prev = mark_action_log_displayed(prev_date)
+                    if marked_prev:
+                        log.info(f"✅ Marked {marked_prev} action_log entries as displayed for {prev_date}")
+                except Exception as e:
+                    log.warning(f"mark_action_log_displayed error (non-fatal): {e}")
             else:
                 log.warning("⚠️ Feishu push skipped or failed (check logs above)")
         except Exception as e:

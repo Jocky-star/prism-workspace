@@ -525,7 +525,10 @@ class ActionLogDataSource(DataSource):
         return str(self.ACTION_LOG_DIR)
 
     def _load_actions_for_date(self, date: str) -> List[Dict]:
-        """加载指定日期的行动记录。"""
+        """加载指定日期的行动记录（自动过滤 displayed: true 的条目）。
+
+        向后兼容：旧格式（无 displayed 字段）视为 displayed: false。
+        """
         path = self.ACTION_LOG_DIR / f"{date}.jsonl"
         if not path.exists():
             return []
@@ -536,7 +539,10 @@ class ActionLogDataSource(DataSource):
                     line = line.strip()
                     if line:
                         try:
-                            actions.append(json.loads(line))
+                            entry = json.loads(line)
+                            # 只返回未展示过的条目（displayed 缺省视为 False）
+                            if not entry.get("displayed", False):
+                                actions.append(entry)
                         except json.JSONDecodeError:
                             continue
         except Exception:

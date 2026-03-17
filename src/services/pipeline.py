@@ -325,6 +325,21 @@ if __name__ == "__main__":
                 has_errors = True
         print("="*50)
 
+        # ── 写入 action_log ───────────────────────────────────
+        try:
+            from src.services.action_log import log_action as _log_action
+            _pipeline_names = list(results.keys())
+            _success_count = sum(1 for p in results.values() if p.to_dict()["success"])
+            _log_action(
+                "pipeline",
+                f"服务管线执行完成",
+                f"管线: {', '.join(_pipeline_names)}，成功 {_success_count}/{len(results)} 条",
+                source="pipeline",
+            )
+        except Exception as _e:
+            _log.warning(f"action_log 写入失败: {_e}")
+        # ─────────────────────────────────────────────────────
+
         sys.exit(1 if has_errors else 0)
 
     except Exception as e:

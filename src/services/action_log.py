@@ -49,18 +49,29 @@ def log_action(
     title: str,
     detail: str = "",
     insight: str = "",
+    source: str = "auto",
     date: Optional[str] = None,
     extra: Optional[Dict[str, Any]] = None,
+    displayed: bool = False,
+    narrative_type: str = "first_discovery",
+    topic_id: str = "",
+    cooldown_until: str = "",
 ) -> Dict[str, Any]:
     """记录一次真实执行的行动。
     
     Args:
         category: delivery（帮用户做了什么）/ proactive（主动洞察并行动）/ intent_followup（跟进用户意图）
+                  / maintenance（维护类）/ pipeline（管线执行）
         title: 简短标题（20 字以内）
         detail: 具体内容/结果
         insight: 洞察（proactive 类用，"我注意到你..."）
+        source: 来源标识，默认 "auto"
         date: 日期，默认今天
         extra: 其他元数据
+        displayed: Brief 是否已展示过此条目，默认 False
+        narrative_type: 叙事类型 — first_discovery / tracking / update / reminder
+        topic_id: 同主题聚合标识（如 "fuzhou-flight"）
+        cooldown_until: 冷却期截止（ISO datetime），此前不再对此 topic 产出
     """
     if date is None:
         date = datetime.now(_tz).strftime("%Y-%m-%d")
@@ -73,9 +84,19 @@ def log_action(
         "category": category,
         "title": title,
         "detail": detail,
+        "source": source,
     }
     if insight:
         record["insight"] = insight
+    # 新增字段：空值不写（节省空间）
+    if displayed:
+        record["displayed"] = True
+    if narrative_type and narrative_type != "first_discovery":
+        record["narrative_type"] = narrative_type
+    if topic_id:
+        record["topic_id"] = topic_id
+    if cooldown_until:
+        record["cooldown_until"] = cooldown_until
     if extra:
         record.update(extra)
     
@@ -136,6 +157,10 @@ if __name__ == "__main__":
     parser.add_argument("--title", default="")
     parser.add_argument("--detail", default="")
     parser.add_argument("--insight", default="")
+    parser.add_argument("--source", default="auto")
+    parser.add_argument("--topic-id", default="", dest="topic_id")
+    parser.add_argument("--narrative-type", default="first_discovery", dest="narrative_type")
+    parser.add_argument("--cooldown-until", default="", dest="cooldown_until")
     args = parser.parse_args()
     
     if args.log:
@@ -147,7 +172,11 @@ if __name__ == "__main__":
             title=args.title,
             detail=args.detail,
             insight=args.insight,
+            source=args.source,
             date=args.date,
+            topic_id=args.topic_id,
+            narrative_type=args.narrative_type,
+            cooldown_until=args.cooldown_until,
         )
         print(f"✅ 已记录: {json.dumps(record, ensure_ascii=False)}")
     

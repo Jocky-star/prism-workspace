@@ -732,6 +732,19 @@ def main():
     print(f"\n✅ 感知完成：处理 {processed}/{len(dates)} 天")
     print_stats()
 
+    # ── 写入 action_log ───────────────────────────────────
+    try:
+        from src.services.action_log import log_action as _log_action
+        _log_action(
+            "pipeline",
+            "感知层处理完成",
+            f"处理 {processed}/{len(dates)} 天，意图提取完毕",
+            source="perception",
+        )
+    except Exception as _e:
+        print(f"  ⚠️ action_log 写入失败: {_e}", file=sys.stderr)
+    # ─────────────────────────────────────────────────────
+
 
 if __name__ == "__main__":
     main()

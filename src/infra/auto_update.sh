@@ -79,7 +79,7 @@ fi
 
 # ── 2. 更新 Skills ──
 log "Updating skills..."
-if clawhub update --all 2>&1 | tee -a "$LOG_FILE"; then
+if npx clawhub update --all 2>&1 | tee -a "$LOG_FILE"; then
   log "✅ Skills updated"
 else
   log "⚠️ Skills update had issues (see above)"

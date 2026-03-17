@@ -69,12 +69,26 @@ sources:
 python3 main.py cron-setup
 ```
 
-自动设置以下定时任务（幂等，重复运行安全）：
+自动完成两件事：
+
+**1. 写入系统 crontab（兜底）：**
 - **22:45** — 拉取录音数据
 - **23:10** — 每日智能管线（感知 → 理解 → 摘要）
 - **23:20** — 服务管线（Brief 生成）
 - **08:30** — 晨间 Brief 推送到飞书
 - **周日 20:00** — 周精炼（人物合并/关系精判）
+
+**2. 输出 OpenClaw Cron 配置指南：**
+
+Prism 的核心功能「每晚自主执行」需要通过 **OpenClaw Cron（jobs.json）** 来运行，
+这样 Agent 才能在执行时访问 LLM、发送飞书消息。
+
+`cron-setup` 会输出：
+- 每个 OpenClaw Cron 的完整配置（name / schedule / prompt / model / timeout）
+- 每晚自主执行的 Prompt 全文（来自 `src/prompts/nightly_execution.md`）
+- 告诉你如何让 Agent 帮你在 OpenClaw 中创建这些 cron 任务
+
+> 📌 修改时间？编辑 config.yaml 的 `nightly.schedule`，然后重新运行 `python3 main.py cron-setup`
 
 ### 阶段四：硬件扩展（可选）
 
@@ -111,6 +125,94 @@ features:
 ---
 
 ## 📋 日常使用命令
+
+---
+
+## 🎯 服务池（Service Pool）
+
+服务池定义了 Agent 在**每晚自主执行时段**应该主动做哪些事，是 Prism 主动服务能力的核心。
+
+### 什么是服务池？
+
+`memory/service_pool.json` — 一个 JSON 文件，定义了一组「周期性任务」。
+每晚 Agent 执行时，读取服务池，按 **priority（高→低）** 选择未过冷却期的任务执行。
+
+每个服务的字段：
+
+| 字段 | 说明 |
+|------|------|
+| `service_id` | 唯一 ID（英文小写+连字符） |
+| `title` | 显示名（≤10字，出现在 Brief 里） |
+| `category` | 分类：`price_tracking` / `info_tracking` / `learning` / `reminder` / `life_service` / `xhs_content` |
+| `description` | 具体任务说明（Agent 照着执行） |
+| `cooldown_days` | 执行间隔（天），避免重复浪费 token |
+| `priority` | 1-10，越高越先选 |
+| `status` | `active`（启用）/ `paused`（暂停）/ `expired`（已过期） |
+| `expires_at` | 过期时间（null = 永不过期）适合限时任务（抢票、临时需求） |
+
+### 初始化服务池
+
+运行 `python3 main.py setup` 时，如果 `memory/service_pool.json` 不存在，
+会自动从 `src/templates/service_pool.example.json` 复制一份。
+
+### 自定义服务池
+
+直接编辑 `memory/service_pool.json`：
+
+```json
+{
+  "services": [
+    {
+      "service_id": "my-custom-service",
+      "title": "我的自定义任务",
+      "category": "info_tracking",
+      "description": "每天搜索 XXX 的最新动态，整理关键变化，存到 memory/learning-log.md",
+      "cooldown_days": 1,
+      "priority": 8,
+      "status": "active",
+      "created_at": "2026-01-01T00:00:00+08:00",
+      "last_executed": null,
+      "last_result_summary": null,
+      "execution_count": 0,
+      "expires_at": null
+    }
+  ]
+}
+```
+
+> ⚠️ `memory/service_pool.json` 不入 git（包含个人化内容）。
+> 模板在 `src/templates/service_pool.example.json`，可以入 git 分享。
+
+---
+
+## 📝 Prompt 模板（src/prompts/）
+
+Prism 的核心 prompt 都在 `src/prompts/` 目录中，可以通过 git 管理和迭代。
+
+| 文件 | 用途 |
+|------|------|
+| `src/prompts/nightly_execution.md` | 每晚自主执行的完整 prompt，Agent 照着执行 |
+| `src/prompts/morning_brief.md` | 晨间 Brief 的 system prompt，定义输出格式和规则 |
+
+### 为什么要 prompt 入代码仓库？
+
+- **可追溯**：每次 prompt 改动都有 git 记录
+- **可迭代**：直接编辑 .md 文件，比改 jobs.json 更友好
+- **可分享**：其他用户 clone 后看到的是通用模板，而不是你的个人信息
+
+### 更新每晚执行 prompt
+
+```bash
+# 直接编辑 prompt 文件
+vim src/prompts/nightly_execution.md
+
+# 重新运行 cron-setup 查看最新 prompt 内容
+python3 main.py cron-setup
+
+# 让 Agent 更新 OpenClaw cron 里的 prompt 内容
+```
+
+---
 
 安装完成后，以下是你（Agent）日常会用到的命令：
 

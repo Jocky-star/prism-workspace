@@ -328,4 +328,23 @@ if __name__ == "__main__":
             print(f"今天数据不存在，改为分析昨天 {target}")
 
     success = run(target)
+
+    # ── 写入 action_log ───────────────────────────────────
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _pkg_root = _Path(__file__).resolve().parent.parent.parent
+        if str(_pkg_root) not in _sys.path:
+            _sys.path.insert(0, str(_pkg_root))
+        from src.services.action_log import log_action as _log_action
+        _log_action(
+            "pipeline",
+            "每日摘要生成完成",
+            f"生成 {target} 的 daily digest，状态: {'成功' if success else '失败'}",
+            source="daily_digest",
+        )
+    except Exception as _e:
+        print(f"  ⚠️ action_log 写入失败: {_e}", file=sys.stderr)
+    # ─────────────────────────────────────────────────────
+
     sys.exit(0 if success else 1)
