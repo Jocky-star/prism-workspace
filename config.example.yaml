@@ -1,90 +1,83 @@
-# Prism 配置文件示例
-# 用法: cp config.example.yaml config.yaml，然后填入你的配置
-# config.yaml 已被 gitignore，不会提交到 git
+# Prism 配置文件
+# 
+# 本文件由用户的 OpenClaw Agent 在安装时自动填写。
+# Agent 读取 SKILL.md → 向用户收集必要信息 → 生成 config.yaml。
+#
+# Agent 操作步骤：
+#   1. cp config.example.yaml config.yaml
+#   2. 向用户询问以下信息并填入 config.yaml
+#   3. 运行 python3 main.py setup
+#   4. 运行 python3 main.py cron-setup
+#
+# config.yaml 已被 gitignore，不会提交到 git。
 
-# ── LLM API 配置 ──────────────────────────────────────────────────────────────
-llm:
-  # API endpoint（兼容 OpenAI 格式）
-  # 示例：https://api.openai.com/v1 / https://api.anthropic.com / 自搭的代理
-  endpoint: "https://your-llm-proxy.example.com/v1"
-  api_key: "sk-your-api-key-here"
-  # 默认模型（支持 litellm 格式）
-  default_model: "claude-sonnet-4-6"
-  # 快速任务用轻量模型
-  fast_model: "claude-haiku-4-5"
-
-# ── 飞书 Bot 配置 ─────────────────────────────────────────────────────────────
+# ── 飞书 Bot 配置（必填）──────────────────────────────────────────────────────
+# Agent 需要向用户询问：飞书自建应用的 App ID、App Secret、目标用户 Open ID。
+# 注意：Open ID 跟 App 绑定，不同 App 的同一用户 Open ID 不同。
 feishu:
-  # 飞书应用 App ID 和 App Secret
-  # 在飞书开放平台创建自建应用后获取
-  app_id: "cli_your_app_id"
-  app_secret: "your_app_secret"
-  # 目标用户的 open_id（消息推送目标）
-  # 获取方式：在飞书开放平台调用 /auth/v3/app_access_token 后查询用户信息
-  target_user_open_id: "ou_your_open_id_here"
+  app_id: ""          # 飞书开放平台 → 自建应用 → App ID
+  app_secret: ""      # 飞书开放平台 → 自建应用 → App Secret
+  target_user_open_id: ""  # 该 App 下目标用户的 Open ID
 
-# ── 数据源配置 ────────────────────────────────────────────────────────────────
+# ── LLM API 配置（必填）──────────────────────────────────────────────────────
+# Agent 需要向用户询问：LLM API 地址和 Key。
+# 如果用户的 OpenClaw 已配置 models.json，可从中自动读取，无需重复填写。
+llm:
+  endpoint: ""        # OpenAI 兼容 API 地址，如 https://api.openai.com/v1
+  api_key: ""         # API Key
+  default_model: "claude-sonnet-4-6"    # 日常任务
+  fast_model: "claude-haiku-4-5"        # 轻量任务
+
+# ── 晨间 Brief 推送（必填）──────────────────────────────────────────────────
+brief:
+  target_user_id: ""  # 与 feishu.target_user_open_id 相同，Brief 推送目标
+
+# ── 数据源配置（按需启用）────────────────────────────────────────────────────
+# Agent 根据用户描述的需求决定启用哪些数据源。
+# 未启用的数据源会被跳过，不影响系统运行。
 sources:
-  # 录音数据 API（音频转写服务）
   audio:
-    enabled: false
-    api_url: "https://your-audio-api.example.com"
+    enabled: false    # 录音转写服务（需要外部 API）
+    api_url: ""
     api_key: ""
-  
-  # 股票监控（A股）
   stock:
-    enabled: false
-    # 关注的股票列表
-    watchlist: []
-    # 示例: ["600519", "000858"]
+    enabled: false    # A股监控
+    watchlist: []     # 如 ["600519", "000858"]
 
-# ── 可选功能开关 ──────────────────────────────────────────────────────────────
+# ── 可选功能（按需启用）──────────────────────────────────────────────────────
+# Agent 根据用户的硬件和需求决定启用哪些功能。
 features:
-  # 摄像头感知（需要树莓派 + 摄像头）
   camera:
-    enabled: false
-    # 摄像头旋转角度（物理倒置时设置 180）
-    rotation: 0
-  
-  # 米家智能家居控制
+    enabled: false    # 树莓派摄像头
+    rotation: 0       # 物理倒置时设 180
   mijia:
-    enabled: false
-    # 米家账号（手机号）
+    enabled: false    # 米家智能家居
     username: ""
     password: ""
     region: "cn"
-  
-  # SPI 屏幕（Prism 状态屏）
   screen:
-    enabled: false
+    enabled: false    # SPI 状态屏
     fb_path: "/dev/fb0"
-  
-  # 小红书内容发布
   xiaohongshu:
-    enabled: false
+    enabled: false    # 小红书发布
 
-# ── 系统配置 ──────────────────────────────────────────────────────────────────
-system:
-  # 时区
-  timezone: "Asia/Shanghai"
-  # 工作目录（一般不需要改）
-  workspace: "~/.openclaw/workspace"
-  # 日志级别：DEBUG / INFO / WARNING
-  log_level: "INFO"
-
-# ── 每晚自主执行（nightly execution）──────────────────────────────────────────
+# ── 每晚自主执行 ────────────────────────────────────────────────────────────
+# Agent 创建 OpenClaw cron 时使用这些配置。
+# Prompt 模板在 src/prompts/nightly_execution.md，可 git 管理和迭代。
 nightly:
-  # 是否启用每晚自主学习 cron（需要 OpenClaw cron / jobs.json 支持）
   enabled: true
-  # cron 时间表达式（默认每天 00:30，Asia/Shanghai）
-  schedule: "30 0 * * *"
-  # 执行使用的模型（支持 litellm 格式）
+  schedule: "30 0 * * *"      # 每天 00:30
   model: "litellm/pa/claude-sonnet-4-6"
-  # 最大执行时间（秒）。7 小时 = 25200s
-  timeout_seconds: 25200
+  timeout_seconds: 25200      # 7 小时
 
-# ── 服务池（service pool）──────────────────────────────────────────────────────
+# ── 服务池 ──────────────────────────────────────────────────────────────────
+# setup 时自动从 src/templates/service_pool.example.json 初始化。
+# Agent 根据用户需求自定义服务内容。
 service_pool:
-  # setup 时如果 memory/service_pool.json 不存在，自动从模板复制
   auto_init: true
 
+# ── 系统配置 ────────────────────────────────────────────────────────────────
+system:
+  timezone: "Asia/Shanghai"
+  workspace: "~/.openclaw/workspace"
+  log_level: "INFO"
